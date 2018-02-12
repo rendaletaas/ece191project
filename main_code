@@ -1,0 +1,196 @@
+class largeOrient {
+  int coilPin1;
+  int coilPin2;
+  volatile long period;    //Period of whole cycle in ms
+  volatile long startTime;   //When the coils turn on
+  volatile long stopTime;    //When the coils turn off
+  long bufferTime;    //Length of the between state buffer
+  long stateNumber;    //Ordinal number of this state
+  volatile int coilState;    //1 if the coil is on
+  volatile unsigned long previousMillis;
+
+  public:
+  largeOrient(int pin1, int pin2, long inPeriod, long inSN, long inBuffer) {
+    coilPin1 = pin1;
+    coilPin2 = pin2;
+    pinMode(coilPin1, OUTPUT);
+    pinMode(coilPin2, OUTPUT);
+
+    stateNumber = inSN;
+    period = inPeriod;
+    bufferTime = inBuffer;
+    startTime = (period / 4) * stateNumber;
+    stopTime = startTime + (period/4) - bufferTime;
+
+    coilState = 0;
+  }   //End largeOrient constructor 
+
+  void stateUpdate(unsigned long inMillis) {
+    if((coilState == 1) && (inMillis % period >= stopTime)) {
+      coilState = 0;
+      digitalWrite(coilPin1, LOW);
+      digitalWrite(coilPin2, LOW);
+    }
+    else if((coilState == 0) && (inMillis % period >= startTime) && (inMillis % period < stopTime)) {
+      coilState = 1;
+      digitalWrite(coilPin1, HIGH);
+      digitalWrite(coilPin2, HIGH);
+    }
+  }   //End stateUpdate
+
+  void speedChange(long increment) {
+    period += increment;
+    startTime = (period / 4) * stateNumber;
+    stopTime = startTime + (period/4) - bufferTime;
+  }   //End speedChange
+
+  long getPeriod() {
+    return period;
+  }
+
+  void fullReset(long inPeriod) {
+    coilState = 0;
+    digitalWrite(coilPin1, LOW);
+    digitalWrite(coilPin2, LOW);
+    period = inPeriod;
+    startTime = (period / 4) * stateNumber;
+    stopTime = startTime + (period/4) - bufferTime;
+  }   //End fullReset
+};    //End largeOrient class
+
+/*-----------------------------------------------------------------------------------------------------*/
+
+class speedControl {
+  unsigned long duration;   //Interval for a speed increase
+  int largeClock;   //1 if this controller is for large, 0 for small
+  long percentCh;   //Percent change to change by
+  volatile long periodChange;   //Current amount to change by
+  volatile long startingP;    //Starting period duration
+  volatile long targetP;      //Target period duration
+  volatile long currentP;     //The device's current period
+  volatile unsigned long previousMillis;
+  volatile int fullSpeed;   //1 if device is at target speed
+  int fullSpeedPin;
+  volatile long temp;
+  
+  public:
+  speedControl(int inType, long inStart, long inTarget, long inPercent, int inPin) {
+    largeClock = inType;
+    startingP = inStart;
+    targetP = inTarget;
+    percentCh = inPercent;
+    fullSpeedPin = inPin;
+    pinMode(fullSpeedPin, OUTPUT);
+    
+    currentP = startingP;
+    duration = 3000;              //Main setting for the duration
+    previousMillis = 0;
+    periodChange = (-1) * startingP * percentCh;
+    fullSpeed = 0;
+  }   //End speedControl constructor
+
+  long getCP() {
+    return currentP;
+  }   //End getCP
+
+  void changeTarget(long newPeriod) {
+    targetP = newPeriod;
+    fullSpeed = 0;
+    digitalWrite(fullSpeedPin, LOW);
+  }   //End changeTarget
+
+  int checkSpeed(unsigned long inMillis, long inPeriod) {
+    currentP = inPeriod;
+    if(fullSpeed == 0) {
+      if(inMillis - previousMillis >= duration) {
+        previousMillis = inMillis;
+        return 1;
+      }
+      else return 0;
+    }
+    else {
+      digitalWrite(fullSpeedPin, HIGH);
+      return 0;
+    }
+  }   //End checkSpeed
+
+  long getChange() {
+    if(targetP > currentP) {
+      temp = currentP * percentCh;
+      if(targetP - currentP < temp)
+        periodChange = targetP - currentP;
+      else
+        periodChange = temp;
+    }
+    else if(targetP < currentP) {
+      temp = (-1) * currentP * percentCh;
+      if(targetP - currentP > temp)
+        periodChange = targetP - currentP;
+      else
+        periodChange = temp;
+    }
+    else {
+      digitalWrite(1, HIGH);
+      periodChange = 0;
+      fullSpeed = 1;
+    }
+    return periodChange;
+  }   //End getChange
+};    //End speedControl class
+
+/*-----------------------------------------------------------------------------------------------------*/
+
+//Initialize variables
+volatile int stopSpinning = 0;
+volatile unsigned long currentMillis = 0;
+int i = 0;
+long systemInc = 0.2;   //Default increment
+long systemSP = 2000;   //Default starting period
+long systemTP = 500;   //Default target period
+volatile long periodChange = 0;
+
+//Initialize largeOrient instances
+/* UF/R: 10,11
+ * DF/R: 8,9
+ * RF/R: 6,7
+ * LF/R: 4,5 */
+largeOrient upNdownS(10, 9, systemSP, 0, 20);
+largeOrient rightNleftS(6, 5, systemSP, 1, 20);
+largeOrient downNupS(8, 11, systemSP, 2, 20);
+largeOrient leftNrightS(4, 7, systemSP, 3, 20);
+
+//Initialize speedControl instances
+speedControl largeClock(1, systemSP, systemTP, systemInc, 0);
+speedControl smallClock(0, systemSP, systemTP, systemInc, 1);
+
+/*
+void stopStirring() {
+  upNdownS.Reset();
+  rightNleftS.Reset();
+  downNupS.Reset();
+  leftNrightS.Reset();
+}
+*/
+
+void setup() {
+}   //End setup
+
+/*-----------------------------------------------------------------------------------------------------*/
+
+void loop() {
+  while(stopSpinning == 0) {
+    currentMillis = millis();
+    upNdownS.stateUpdate(currentMillis);
+    rightNleftS.stateUpdate(currentMillis);
+    downNupS.stateUpdate(currentMillis);
+    leftNrightS.stateUpdate(currentMillis);
+    if(largeClock.checkSpeed(currentMillis, upNdownS.getPeriod())) {
+      periodChange = largeClock.getChange();
+      //periodChange = -50;
+      upNdownS.speedChange(periodChange);
+      rightNleftS.speedChange(periodChange);
+      downNupS.speedChange(periodChange);
+      leftNrightS.speedChange(periodChange);
+    }
+  }   //End while
+}   //End loop

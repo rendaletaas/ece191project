@@ -130,7 +130,6 @@ class speedControl {
         periodChange = temp;
     }
     else {
-      digitalWrite(1, HIGH);
       periodChange = 0;
       fullSpeed = 1;
     }

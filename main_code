@@ -1,3 +1,14 @@
+//Initialize system variables
+long systemShortInc = 1;      //Default short increment
+long systemLongInc = 5;       //Default long increment
+long systemTransition = 100;  //Default transtion from short to long
+long systemSP = 2000;         //Default starting period
+long systemTP = 1990;         //Default target period
+long systemBuffer = 20;       //Default state buffer time
+long systemCheckTime = 3000;  //Default time between speed checks
+//End system variables
+
+/*-----------------------------------------------------------------------------------------------------*/
 class largeOrient {
   int coilPin1;
   int coilPin2;
@@ -50,9 +61,11 @@ class largeOrient {
     offTime = (3 * (period / 4)) + bufferTime;
   }   //End periodChange function
 
-  int getState() {
-    return coilState;
-  }   //End getState function
+  void reset() {
+    coilState = 0;
+    digitalWrite(coilPin1, LOW);
+    digitalWrite(coilPin1, LOW);
+  }   //End reset function
 };    //End largeOrient class
 
 /*-----------------------------------------------------------------------------------------------------*/
@@ -65,15 +78,6 @@ int findNumSteps(long inCurPer, long inTarPer, long inPerCh) {
 }   //End findNumSteps function
 
 /*-----------------------------------------------------------------------------------------------------*/
-//Initialize system variables
-long systemShortInc = 1;      //Default short increment
-long systemLongInc = 5;       //Default long increment
-long systemTransition = 100;  //Default transtion from short to long
-long systemSP = 2000;         //Default starting period
-long systemTP = 1990;         //Default target period
-long systemBuffer = 20;       //Default state buffer time
-long systemCheckTime = 3000;  //Default time between speed checks
-
 //Initialize largeOrient instances
 /* UF/R: 10,11
  * DF/R: 8,9
@@ -85,9 +89,10 @@ largeOrient downNupS(8, 11, systemSP, 2, systemBuffer);
 largeOrient leftNrightS(4, 7, systemSP, 3, systemBuffer);
 
 //State Variables
-volatile int stopSpinning = 0;
+volatile int stopStirring = 0;
 volatile int atSpeed = 0;
 volatile int currentSN = 0;
+volatile int smallMode = 0;
 //Time variables
 volatile unsigned long currentMillis = 0;
 volatile unsigned long previousMillis = 0;
@@ -96,20 +101,29 @@ volatile long currentPeriod = systemSP;
 volatile long currentTarget = systemTP;
 volatile long periodChange = systemLongInc;
 volatile int numSteps = 0;
+//End object and variable initialization
 
+/*-----------------------------------------------------------------------------------------------------*/
+void stopInterrupt() {
+  stopStirring == 1;
+}   //End stopInterrupt
+
+/*-----------------------------------------------------------------------------------------------------*/
 void setup() {
   pinMode(0, OUTPUT);
-  pinMode(1, OUTPUT);
-  pinMode(2, OUTPUT);
+  pinMode(1,OUTPUT );
+  pinMode(2, INPUT);
   pinMode(3, OUTPUT);
   numSteps = findNumSteps(currentPeriod, currentTarget, periodChange);
+  attachInterrupt(0, stopInterrupt, FALLING);
 }   //End setup
 
 /*-----------------------------------------------------------------------------------------------------*/
-
 void loop() {
-  while(stopSpinning == 0) {
+  //Large stirring
+  while((stopStirring == 0) && (smallMode == 0)) {
     currentMillis = millis();
+    
     //Rotation cycle
     if(upNdownS.stateUpdate(currentMillis, currentSN)==1)
       currentSN = 1;
@@ -152,5 +166,54 @@ void loop() {
     //Full speed pin
     if(currentPeriod == currentTarget)
       digitalWrite(0, HIGH);
-  }   //End spinning while
+  }   //End large spinning while
+
+  //Small stirring
+  while((stopStirring == 0) && (smallMode == 1)) {
+    currentMillis = millis();
+    /*
+    //Rotation cycle
+    if(upNdownS.stateUpdate(currentMillis, currentSN)==1)
+      currentSN = 1;
+    if(rightNleftS.stateUpdate(currentMillis, currentSN)==1)
+      currentSN = 2;
+    if(downNupS.stateUpdate(currentMillis, currentSN)==1)
+      currentSN = 3;
+    if(leftNrightS.stateUpdate(currentMillis, currentSN)==1)
+      currentSN = 0;
+    */
+
+    //Speed change
+    if((numSteps > 0) &&
+    (currentPeriod != currentTarget) &&
+    (currentMillis - previousMillis >= systemCheckTime) &&
+    (currentSN == 0)) {
+      previousMillis = currentMillis;
+      //Determine period change amount
+      if(currentPeriod > currentTarget) {
+        if(currentPeriod > systemTransition)
+          periodChange = -systemLongInc;
+        else
+          periodChange = -systemShortInc;
+      }
+      else if(currentPeriod < currentTarget) {
+        if(currentPeriod >= systemTransition)
+          periodChange = systemLongInc;
+        else
+          periodChange = systemShortInc;
+      }
+      else
+        periodChange = 0;
+      currentPeriod += periodChange;
+      upNdownS.periodChange(currentPeriod);
+      rightNleftS.periodChange(currentPeriod);
+      downNupS.periodChange(currentPeriod);
+      leftNrightS.periodChange(currentPeriod);
+      numSteps--;
+    }   //End speed change if
+
+    //Full speed pin
+    if(currentPeriod == currentTarget)
+      digitalWrite(0, HIGH);
+  }   //End small stirring while
 }   //End loop

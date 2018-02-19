@@ -1,2 +1,2 @@
-# ece191project
-Magnetic stirrer project for ECE 191. Contributors: Rendale Taas, Joshua Hernandez
+# large_only
+Stirring for the large beakers only. Includes ramping. Missing stop interupt and while spinning speed changes.

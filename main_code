@@ -8,7 +8,7 @@ const float systemPercent = 0.01;     //Percentage change in the period
 const long systemSP = 300;            //Default starting period in ms
 const long systemTP = 100;            //Default target period in ms
 const long systemCheckTime = 3000;    //Default time between speed checks in ms
-const int sysLarNumStates = 4;        //Number of states for large stirring
+const int sysLarNumStates = 8;        //Number of states for large stirring
 const int sysSmlNumStates = 4;        //Number of states for small stirring
 
 /*------------------------------------------------------------------------------------*/
@@ -149,9 +149,13 @@ void setup() {
   
   //Initialize largeOrient instances
   largeOrient l8N2S(n8, s2);
+  largeOrient l9N1S(n9, s1);
   largeOrient l6N4S(n6, s4);
+  largeOrient l3N7S(n3, s7);
   largeOrient l2N8S(n2, s8);
+  largeOrient l1N9S(n1, s9);
   largeOrient l4N6S(n4, s6);
+  largeOrient l7N3S(n7, s3);
   
   //Initialize smallOrient instances
   smallOrient s1379N5S(5, n1, n3, n7, n9, s5);
@@ -186,16 +190,28 @@ void loop() {
         prevMlsState = currentMillis;
         switch(currentSN) {
           case 0: l8N2S.stateUpdate(1);
-                  l4N6S.stateUpdate(0);
+                  l7N3S.stateUpdate(0);
                   currentSN = 1;  break;
-          case 1: l6N4S.stateUpdate(1);
+          case 1: l9N1S.stateUpdate(1);
                   l8N2S.stateUpdate(0);
                   currentSN = 2;  break;
-          case 2: l2N8S.stateUpdate(1);
-                  l6N4S.stateUpdate(0);
+          case 2: l6N4S.stateUpdate(1);
+                  l9N1S.stateUpdate(0);
                   currentSN = 3;  break;
-          case 3: l4N6S.stateUpdate(1);
+          case 3: l3N7S.stateUpdate(1);
+                  l6N4S.stateUpdate(0);
+                  currentSN = 4;  break;
+          case 4: l2N8S.stateUpdate(1);
+                  l3N7S.stateUpdate(0);
+                  currentSN = 5;  break;
+          case 5: l1N9S.stateUpdate(1);
                   l2N8S.stateUpdate(0);
+                  currentSN = 6;  break;
+          case 6: l4N6S.stateUpdate(1);
+                  l1N9S.stateUpdate(0);
+                  currentSN = 7;  break;
+          case 7: l7N3S.stateUpdate(1);
+                  l4N6S.stateUpdate(0);
                   currentSN = 0;  break;
           default:currentSN = 0;
         }   //End state switch

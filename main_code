@@ -1,274 +1,280 @@
 //Initialize system variables
-long systemShortInc = 1;      //Default short increment
-long systemLongInc = 5;       //Default long increment
-long systemTransition = 100;  //Default transtion from short to long
-long systemSP = 2000;         //Default starting period
-long systemTP = 1990;         //Default target period
-long systemBuffer = 20;       //Default state buffer time
-long systemCheckTime = 3000;  //Default time between speed checks
-//End system variables
+const int systemFreq = 50000;         //Frequency of the PWM in Hz
+const int sysResolution = 8;          //Number of bits for PWM channel
+const long systemLowDutyCycle = 140;  //Low duty cycle value, an integer between
+                                      //0 and 2^sysResolution
+const long systemHighDutyCycle = 200; //High duty cycle value
+const float systemPercent = 0.01;     //Percentage change in the period
+const long systemSP = 300;            //Default starting period in ms
+const long systemTP = 100;            //Default target period in ms
+const long systemCheckTime = 3000;    //Default time between speed checks in ms
+const int sysLarNumStates = 4;        //Number of states for large stirring
+const int sysSmlNumStates = 4;        //Number of states for small stirring
 
-/*-----------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------*/
+//Coil pin numbers
+/* 7 8 9
+ * 4 5 6
+ * 1 2 3 */
+const int n1 = 21, s1 = 19;
+const int n2 = 33, s2 = 32;
+const int n3 = 18, s3 = 5;
+const int n4 = 27, s4 = 14;
+const int n5 = 2, s5 = 15;
+const int n6 = 25, s6 = 26;
+const int n7 = 16, s7 = 17;
+const int n8 = 13, s8 = 12;
+const int n9 = 4, s9 = 0;
+ 
+/*------------------------------------------------------------------------------------*/
+//Function declarations
+long findPeriodChange(long inCurPer, long inTarPer);
+void stopInterrupt();
+
+/*------------------------------------------------------------------------------------*/
+/* The large orient class is meant for stirring large beakers. It will turn on 2 coils,
+ * which should be different polarity. Since the pin mode function is in this class,
+ * it must be initialized before the small orient class. The state update function
+ * will either turn off or turn on the coils. */
 class largeOrient {
   int coilPin1;
   int coilPin2;
-  volatile long period;       //Period of whole cycle in ms
-  volatile long onTime;       //When the coils turn on
-  volatile long offTime;      //When the coils turn off
-  long bufferTime;            //Length of the between state buffer
-  long stateNumber;           //Ordinal number of this state
-  volatile int coilState;     //1 if the coil is on
-  volatile unsigned long previousMillis;
 
   public:
-  largeOrient(int pin1, int pin2, long inPeriod, long inSN, long inBuffer) {
+  largeOrient(int pin1, int pin2) {
     coilPin1 = pin1;
     coilPin2 = pin2;
     pinMode(coilPin1, OUTPUT);
     pinMode(coilPin2, OUTPUT);
-
-    stateNumber = inSN;
-    period = inPeriod;
-    bufferTime = inBuffer;
-    onTime = (period / 4) - bufferTime;
-    offTime = (3 * (period / 4)) + bufferTime;
-    coilState = 0;
-    previousMillis = 0;
+    digitalWrite(coilPin1, LOW);
+    digitalWrite(coilPin2, LOW);
   }   //End largeOrient constructor 
 
-  int stateUpdate(unsigned long inMillis, int inNumber) {
-    if(stateNumber == inNumber) {
-      if((coilState == 1) && (inMillis - previousMillis >= onTime)) {
-        previousMillis = inMillis;
-        coilState = 0;
-        digitalWrite(coilPin1, LOW);
-        digitalWrite(coilPin2, LOW);
-        return 1;
-      }
-      else if((coilState == 0) && (inMillis - previousMillis >= offTime)) {
-        previousMillis = inMillis;
-        coilState = 1;
-        digitalWrite(coilPin1, HIGH);
-        digitalWrite(coilPin2, HIGH);
-      }
+  void stateUpdate(int inState) {
+    if(inState == 0) {
+      digitalWrite(coilPin1, LOW);
+      digitalWrite(coilPin2, LOW);
     }
-    return 0;
+    else {
+      digitalWrite(coilPin1, HIGH);
+      digitalWrite(coilPin2, HIGH);
+    }
   }   //End stateUpdate function
-
-  void periodChange(long inPC) {
-    period = inPC;
-    onTime = (period / 4) - bufferTime;
-    offTime = (3 * (period / 4)) + bufferTime;
-  }   //End periodChange function
-
-  void reset() {
-    coilState = 0;
-    digitalWrite(coilPin1, LOW);
-    digitalWrite(coilPin1, LOW);
-  }   //End reset function
 };    //End largeOrient class
 
-/*-----------------------------------------------------------------------------------------------------*/
-int findNumSteps(long inCurPer, long inTarPer) {
+/*------------------------------------------------------------------------------------*/
+/* The small orient class is meant for stirring the small vials. It will turn on either
+ * 4 or 5 coils, which is decided when initializing the object. When meant for 5 coils,
+ * pin5 should be used for the center coil. Since the center pin is not used for large
+ * stirring, the pin mode function for the center coil is here. */
+class smallOrient {
+  int numCoils;
+  int coilPin1, coilPin2, coilPin3, coilPin4, coilPin5;
+
+  public:
+  smallOrient(int inNumber, int pin1, int pin2, int pin3, int pin4, int pin5) {
+    numCoils = inNumber;
+    coilPin1 = pin1;
+    coilPin2 = pin2;
+    coilPin3 = pin3;
+    coilPin4 = pin4;
+    if(numCoils == 5) {
+      coilPin5 = pin5;
+      pinMode(coilPin5, OUTPUT);
+      digitalWrite(coilPin5, LOW);
+    }
+    else
+      coilPin5 = 0;
+  }   //End largeOrient constructor 
+
+  void stateUpdate(int inState) {
+    if(inState == 0) {
+      digitalWrite(coilPin1, LOW);
+      digitalWrite(coilPin2, LOW);
+      digitalWrite(coilPin3, LOW);
+      digitalWrite(coilPin4, LOW);
+      if(numCoils == 5)
+        digitalWrite(coilPin5, LOW);
+    }
+    else {
+      digitalWrite(coilPin1, HIGH;
+      digitalWrite(coilPin2, HIGH);
+      digitalWrite(coilPin3, HIGH);
+      digitalWrite(coilPin4, HIGH);
+      if(numCoils == 5)
+        digitalWrite(coilPin5, HIGH);
+    }
+  }   //End stateUpdate function
+};    //End smallOrient class
+
+/*------------------------------------------------------------------------------------*/
+/* In setup, we do the following tasks: set up the PWM channel, set the LED and button
+ * pins, initialize variables used by main, set up the interrupt, and initialize all
+ * the objects. Remember that largeOrient sets the pin mode, so they must be
+ * initialized first. */
+void setup() {
+  //PWM setup
+  ledcSetup(0, systemFreq, sysResolution);
+  ledcAttachPin(23, 0);
+  ledcWrite(0, systemLowDutyCycle);
+  ledcSetup(1, systemFreq, sysResolution);
+  ledcAttachPin(22, 1);
+  ledcWrite(1, systemHighDutyCycle);
+
+  //LED setup
+  //TO DO
+  
+  //Button setup
+  //TO DO
+  
+  //State Variables
+  volatile int stopStirring = 0;
+  volatile int atSpeed = 0;
+  volatile int currentSN = 0;
+  volatile int smallMode = 0;
+  
+  //Time variables
+  volatile unsigned long currentMillis = 0;
+  volatile unsigned long prevMlsState = 0;
+  volatile unsigned long prevMlsCheck = 0;
+  
+  //Period variables
+  volatile long currentPer = systemSP;
+  volatile long currentTar = systemTP;
+  volatile long currentInt = currentPer / sysLarNumStates;
+  volatile long periodChange = 0;
+  
+  //Attatch interrupt (this must be after stopStirring is initialized)
+  //TO DO
+  
+  //Initialize largeOrient instances
+  largeOrient l8N2S(n8, s2);
+  largeOrient l6N4S(n6, s4);
+  largeOrient l2N8S(n2, s8);
+  largeOrient l4N6S(n4, s6);
+  
+  //Initialize smallOrient instances
+  smallOrient s1379N5S(5, n1, n3, n7, n9, s5);
+  smallOrient s28N46S(4, n2, n8, s4, s6, s5);
+  smallOrient s5N1379S(5, s1, s3, s7, s9, n5);
+  smallOrient s46N28S(4, n4, n6, s2, s8, n5);
+}   //End setup
+
+/*====================================================================================*/
+void loop() {
+/* When stopStirring is set to 0 by a button press, we entering the stirring function,
+ * found inside the following if function. It is separated by large and small stirring
+ * which have almost the same implementation. Every certain amount of time, set by
+ * currentInt, we change the state of the device by sending a stateUpdate to each
+ * object and incrementing to the next state. At a different interval, set by
+ * systemCheckTime, the speed of the device is changed. The speed will be changed every
+ * interval until the current period matches the target. When the stopStirring
+ * interrupt happens, stopStirring is set to 1, and the function exits the while. */
+  if(stopStirring == 0) {
+    //Reseting all variables
+    currentPer = systemSP;
+    if(smallMode == 0)
+      currentInt = currentPer / systemLarNumStates;
+    else
+      currentInt = currentPer / systemSmlNumStates;
+      
+    //Large stirring
+    while((stopStirring == 0) && (smallMode == 0)) {
+      //Stirring function
+      currentMillis = millis();
+      if(currentMillis - prevMlsState >= currentInt) {
+        prevMlsState = currentMillis;
+        switch(currentSN) {
+          case 0: l8N2S.stateUpdate(1);
+                  l4N6S.stateUpdate(0);
+                  currentSN = 1;  break;
+          case 1: l6N4S.stateUpdate(1);
+                  l8N2S.stateUpdate(0);
+                  currentSN = 2;  break;
+          case 2: l2N8S.stateUpdate(1);
+                  l6N4S.stateUpdate(0);
+                  currentSN = 3;  break;
+          case 3: l4N6S.stateUpdate(1);
+                  l2N8S.stateUpdate(0);
+                  currentSN = 0;  break;
+          default:currentSN = 0;
+        }   //End state switch
+      }   //End state change if
+      
+      //Speed change function
+      else if((currentMillis - prevMlsCheck >= systemCheckTime) &&
+              (currentSN == 0)) {
+        prevMlsCheck = currentMillis;
+        periodChange = findPeriodChange(currentPer, currentTar);
+        currentPer += periodChange;
+        currentInt = currentPer / systemLarNumStates;        
+      }   //End speed change if
+    }   //End large stirring while
+    
+    //Small stirring
+    while((stopStirring == 0) && (smallMode == 1)) {
+      //Stirring function
+      currentMillis = millis();
+      if(currentMillis - prevMlsState >= currentInt) {
+        prevMlsState = currentMillis;
+        switch(currentSN) {
+          //TO DO
+        }   //End state switch
+      }   //End state change if
+      
+      //Speed change function
+      else if((currentMillis - prevMlsCheck >= systemCheckTime) &&
+              (currentSN == 0)) {
+        prevMlsCheck = currentMillis;
+        periodChange = findPeriodChange(currentPer, currentTar);
+        currentPer += periodChange;
+        currentInt = currentPer / systemSmlNumStates;        
+      }   //End speed change if
+    }   //End small stirring while
+    
+    //Stirring exit
+    //TO DO
+  }   //End stopStirring if
+}   //End loop
+
+/*====================================================================================*/
+/* The findPeriodChange function finds how much the period is supposed to change. This
+ * is meant to be a percentage change of the current period, set by systemPercent. If
+ * this change amount would be more than the difference the target period and the
+ * current period, the function will return that difference. */
+long findPeriodChange(long inCurPer, long inTarPer) {
   long tempVal;
-  int returnVal;
-  if(inTarPer < inCurPer) {
-    if(inCurPer <= systemTransition) {
-      tempVal = inCurPer - inTarPer;
-      returnVal = (int)(tempVal / systemShortInc);
+  long returnVal = (long)((float)inCurPer * systemPercent);
+  if(inCurPer > inTarPer) {
+    tempVal = inCurPer - inTarPer;
+    if(tempVal < returnVal) {
+      returnVal = -tempVal;
       return returnVal;
     }
     else {
-      if(inTarPer < systemTransition) {
-        tempVal = inCurPer - systemTransition;
-        returnVal = (int)(tempVal / systemLongInc);
-        tempVal = systemTransition - inTarPer;
-        returnVal += (int)(tempVal / systemShortInc);
-        return returnVal;
-      }
-      else {
-        tempVal = inCurPer - inTarPer;
-        returnVal = (int)(tempVal / systemLongInc);
-        return returnVal;
-      }
+      returnVal = -returnVal;
+      return returnVal;
     }
   }
   else if(inCurPer < inTarPer) {
-    if(inCurPer <= systemTransition) {
-      if(inTarPer <= systemTransition) {
-        tempVal = inTarPer - inCurPer;
-        returnVal = (int)(tempVal / systemShortInc);
-        return returnVal;
-      }
-      else {
-        tempVal = inTarPer - systemTransition;
-        returnVal = (int)(tempVal / systemLongInc);
-        tempVal = systemTransition - inCurPer;
-        returnVal += (int)(tempVal / systemShortInc);
-        return returnVal;
-      }
+    tempVal = inTarPer - inCurPer;
+    if(tempVal < returnVal) {
+      return tempVal;
     }
     else {
-      tempVal = inTarPer - inCurPer;
-      returnVal = (int)(tempVal / systemLongInc);
       return returnVal;
     }
   }
-  else
-    return 0;
+  else {
+    returnVal = 0;
+    return returnVal;
+  }
 }   //End findNumSteps function
 
-/*-----------------------------------------------------------------------------------------------------*/
-//Initialize largeOrient instances
-/* UF/R: 10,11
- * DF/R: 8,9
- * RF/R: 6,7
- * LF/R: 4,5 */
-largeOrient upNdownS(10, 9, systemSP, 0, systemBuffer);
-largeOrient rightNleftS(6, 5, systemSP, 1, systemBuffer);
-largeOrient downNupS(8, 11, systemSP, 2, systemBuffer);
-largeOrient leftNrightS(4, 7, systemSP, 3, systemBuffer);
-
-//State Variables
-volatile int stopStirring = 0;
-volatile int atSpeed = 0;
-volatile int currentSN = 0;
-volatile int smallMode = 0;
-//Time variables
-volatile unsigned long currentMillis = 0;
-volatile unsigned long previousMillis = 0;
-//Period variables
-volatile long currentPeriod = systemSP;
-volatile long currentTarget = systemTP;
-volatile long periodChange = systemLongInc;
-volatile int numSteps = 0;
-//End object and variable initialization
-
-/*-----------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------*/
+/* The stopInterrupt function simply sets stopStirring to 1, to exit the stirring while
+ * loops. Compliant with the Arduino implementation of interrupts, this function must
+ * return void and take no parameters. */
 void stopInterrupt() {
   stopStirring = 1;
-}   //End stopInterrupt
-
-/*-----------------------------------------------------------------------------------------------------*/
-void setup() {
-  pinMode(0, OUTPUT);
-  pinMode(1, OUTPUT );
-  pinMode(2, INPUT);
-  pinMode(3, OUTPUT);
-  numSteps = findNumSteps(currentPeriod, currentTarget);
-  attachInterrupt(0, stopInterrupt, FALLING);
-}   //End setup
-
-/*-----------------------------------------------------------------------------------------------------*/
-void loop() {
-  if(stopStirring == 0) {
-    
-    //Large stirring
-    while((stopStirring == 0) && (smallMode == 0)) {
-      currentMillis = millis();
-      
-      //Rotation cycle
-      if(upNdownS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 1;
-      if(rightNleftS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 2;
-      if(downNupS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 3;
-      if(leftNrightS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 0;
-  
-      //Speed change
-      if((numSteps > 0) &&
-      (currentPeriod != currentTarget) &&
-      (currentMillis - previousMillis >= systemCheckTime) &&
-      (currentSN == 0)) {
-        previousMillis = currentMillis;
-        //Determine period change amount
-        if(currentPeriod > currentTarget) {
-          if(currentPeriod > systemTransition)
-            periodChange = -systemLongInc;
-          else
-            periodChange = -systemShortInc;
-        }
-        else if(currentPeriod < currentTarget) {
-          if(currentPeriod >= systemTransition)
-            periodChange = systemLongInc;
-          else
-            periodChange = systemShortInc;
-        }
-        else
-          periodChange = 0;
-        currentPeriod += periodChange;
-        upNdownS.periodChange(currentPeriod);
-        rightNleftS.periodChange(currentPeriod);
-        downNupS.periodChange(currentPeriod);
-        leftNrightS.periodChange(currentPeriod);
-        numSteps--;
-      }   //End speed change if
-  
-      //Full speed pin
-      if(currentPeriod == currentTarget)
-        digitalWrite(0, HIGH);
-    }   //End large spinning while
-  
-    //Small stirring
-    while((stopStirring == 0) && (smallMode == 1)) {
-      currentMillis = millis();
-      /*
-      //Rotation cycle
-      if(upNdownS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 1;
-      if(rightNleftS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 2;
-      if(downNupS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 3;
-      if(leftNrightS.stateUpdate(currentMillis, currentSN)==1)
-        currentSN = 0;
-      */
-  
-      //Speed change
-      if((numSteps > 0) &&
-      (currentPeriod != currentTarget) &&
-      (currentMillis - previousMillis >= systemCheckTime) &&
-      (currentSN == 0)) {
-        previousMillis = currentMillis;
-        //Determine period change amount
-        if(currentPeriod > currentTarget) {
-          if(currentPeriod > systemTransition)
-            periodChange = -systemLongInc;
-          else
-            periodChange = -systemShortInc;
-        }
-        else if(currentPeriod < currentTarget) {
-          if(currentPeriod >= systemTransition)
-            periodChange = systemLongInc;
-          else
-            periodChange = systemShortInc;
-        }
-        else
-          periodChange = 0;
-        currentPeriod += periodChange;
-        upNdownS.periodChange(currentPeriod);
-        rightNleftS.periodChange(currentPeriod);
-        downNupS.periodChange(currentPeriod);
-        leftNrightS.periodChange(currentPeriod);
-        numSteps--;
-      }   //End speed change if
-  
-      //Full speed pin
-      if(currentPeriod == currentTarget)
-        digitalWrite(0, HIGH);
-    }   //End small stirring while
-
-    //Reset coils
-    currentPeriod = systemSP;
-    upNdownS.reset();
-    rightNleftS.reset();
-    downNupS.reset();
-    leftNrightS.reset();
-    upNdownS.periodChange(currentPeriod);
-    rightNleftS.periodChange(currentPeriod);
-    downNupS.periodChange(currentPeriod);
-    leftNrightS.periodChange(currentPeriod);
-  }   //End stirring if
-}   //End loop
+}   //End stopInterrupt function

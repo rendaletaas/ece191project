@@ -97,7 +97,7 @@ class smallOrient {
         digitalWrite(coilPin5, LOW);
     }
     else {
-      digitalWrite(coilPin1, HIGH;
+      digitalWrite(coilPin1, HIGH);
       digitalWrite(coilPin2, HIGH);
       digitalWrite(coilPin3, HIGH);
       digitalWrite(coilPin4, HIGH);
@@ -108,10 +108,47 @@ class smallOrient {
 };    //End smallOrient class
 
 /*------------------------------------------------------------------------------------*/
+//Initialize program variables and objects
+
+//State Variables
+volatile int stopStirring = 0;
+volatile int atSpeed = 0;
+volatile int currentSN = 0;
+volatile int smallMode = 0;
+
+//Time variables
+volatile unsigned long currentMillis = 0;
+volatile unsigned long prevMlsState = 0;
+volatile unsigned long prevMlsCheck = 0;
+
+//Period variables
+volatile long currentPer = systemSP;
+volatile long currentTar = systemTP;
+volatile long currentInt = currentPer / sysLarNumStates;
+volatile long periodChange = 0;
+
+/* Remember that largeOrient sets the pin mode, so they must be initialized first.
+ * All largeOrients must be initialized, even if they won't be used. */
+//Initialize largeOrient instances
+largeOrient l8N2S(n8, s2);
+largeOrient l9N1S(n9, s1);
+largeOrient l6N4S(n6, s4);
+largeOrient l3N7S(n3, s7);
+largeOrient l2N8S(n2, s8);
+largeOrient l1N9S(n1, s9);
+largeOrient l4N6S(n4, s6);
+largeOrient l7N3S(n7, s3);
+
+//Initialize smallOrient instances
+smallOrient s1379N5S(5, n1, n3, n7, n9, s5);
+smallOrient s28N46S(4, n2, n8, s4, s6, s5);
+smallOrient s5N1379S(5, s1, s3, s7, s9, n5);
+smallOrient s46N28S(4, n4, n6, s2, s8, n5);
+
+/*------------------------------------------------------------------------------------*/
 /* In setup, we do the following tasks: set up the PWM channel, set the LED and button
- * pins, initialize variables used by main, set up the interrupt, and initialize all
- * the objects. Remember that largeOrient sets the pin mode, so they must be
- * initialized first. */
+ * pins, set up the interrupt, and initialize all
+ * the objects.  */
 void setup() {
   //PWM setup
   ledcSetup(0, systemFreq, sysResolution);
@@ -127,37 +164,9 @@ void setup() {
   //Button setup
   //TO DO
   
-  //State Variables
-  volatile int stopStirring = 0;
-  volatile int atSpeed = 0;
-  volatile int currentSN = 0;
-  volatile int smallMode = 0;
-  
-  //Time variables
-  volatile unsigned long currentMillis = 0;
-  volatile unsigned long prevMlsState = 0;
-  volatile unsigned long prevMlsCheck = 0;
-  
-  //Period variables
-  volatile long currentPer = systemSP;
-  volatile long currentTar = systemTP;
-  volatile long currentInt = currentPer / sysLarNumStates;
-  volatile long periodChange = 0;
-  
   //Attatch interrupt (this must be after stopStirring is initialized)
   //TO DO
-  
-  //Initialize largeOrient instances
-  largeOrient l8N2S(n8, s2);
-  largeOrient l6N4S(n6, s4);
-  largeOrient l2N8S(n2, s8);
-  largeOrient l4N6S(n4, s6);
-  
-  //Initialize smallOrient instances
-  smallOrient s1379N5S(5, n1, n3, n7, n9, s5);
-  smallOrient s28N46S(4, n2, n8, s4, s6, s5);
-  smallOrient s5N1379S(5, s1, s3, s7, s9, n5);
-  smallOrient s46N28S(4, n4, n6, s2, s8, n5);
+
 }   //End setup
 
 /*====================================================================================*/
@@ -174,9 +183,9 @@ void loop() {
     //Reseting all variables
     currentPer = systemSP;
     if(smallMode == 0)
-      currentInt = currentPer / systemLarNumStates;
+      currentInt = currentPer / sysLarNumStates;
     else
-      currentInt = currentPer / systemSmlNumStates;
+      currentInt = currentPer / sysSmlNumStates;
       
     //Large stirring
     while((stopStirring == 0) && (smallMode == 0)) {
@@ -207,7 +216,7 @@ void loop() {
         prevMlsCheck = currentMillis;
         periodChange = findPeriodChange(currentPer, currentTar);
         currentPer += periodChange;
-        currentInt = currentPer / systemLarNumStates;        
+        currentInt = currentPer / sysLarNumStates;        
       }   //End speed change if
     }   //End large stirring while
     
@@ -228,7 +237,7 @@ void loop() {
         prevMlsCheck = currentMillis;
         periodChange = findPeriodChange(currentPer, currentTar);
         currentPer += periodChange;
-        currentInt = currentPer / systemSmlNumStates;        
+        currentInt = currentPer / sysSmlNumStates;        
       }   //End speed change if
     }   //End small stirring while
     

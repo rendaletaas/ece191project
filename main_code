@@ -1,14 +1,49 @@
 //Initialize system variables
-long systemShortInc = 1;      //Default short increment
-long systemLongInc = 5;       //Default long increment
-long systemTransition = 100;  //Default transtion from short to long
+const int systemFreq = 200;   //System clock frequency in Hz
+const int sysResolution = 8;  //Number of bits for PWM channel
+long systemPercent = 0.1;    //Percentage change in the period
 long systemSP = 2000;         //Default starting period
-long systemTP = 1990;         //Default target period
-long systemBuffer = 20;       //Default state buffer time
+long systemTP = 100;         //Default target period
+long systemBuffer = 20;       //Buffer time between states
 long systemCheckTime = 3000;  //Default time between speed checks
 //End system variables
 
-/*-----------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------*/
+//State Variables
+volatile int stopStirring = 0;
+volatile int atSpeed = 0;
+volatile int currentSN = 0;
+volatile int smallMode = 0;
+//Time variables
+volatile unsigned long currentMillis = 0;
+volatile unsigned long previousMillis = 0;
+//Period variables
+volatile long currentPeriod = systemSP;
+volatile long currentTarget = systemTP;
+volatile long periodChange = 0;
+//End variable initialization
+
+//*------------------------------------------------------------------------------------*/
+void setup() {
+  //PWM setup
+  ledcSetup(0, systemFreq, sysResolution);
+  ledcAttachPin(23, 0);
+  ledcWrite(0, 250);
+  ledcSetup(1, systemFreq, sysResolution);
+  ledcAttachPin(22, 1);
+  ledcWrite(1, 250);
+
+  //LED setup
+  /*
+  pinMode(0, OUTPUT);
+  pinMode(1, OUTPUT );
+  pinMode(2, INPUT);
+  pinMode(3, OUTPUT);
+  attachInterrupt(0, stopInterrupt, FALLING);
+  */
+}   //End setup
+
+/*------------------------------------------------------------------------------------*/
 class largeOrient {
   int coilPin1;
   int coilPin2;
@@ -21,7 +56,7 @@ class largeOrient {
   volatile unsigned long previousMillis;
 
   public:
-  largeOrient(int pin1, int pin2, long inPeriod, long inSN, long inBuffer) {
+  largeOrient(int pin1, int pin2, long inPeriod, int inSN, long inBuffer) {
     coilPin1 = pin1;
     coilPin2 = pin2;
     pinMode(coilPin1, OUTPUT);
@@ -67,99 +102,53 @@ class largeOrient {
     digitalWrite(coilPin1, LOW);
   }   //End reset function
 };    //End largeOrient class
-
-/*-----------------------------------------------------------------------------------------------------*/
-int findNumSteps(long inCurPer, long inTarPer) {
+/*------------------------------------------------------------------------------------*/
+long findPeriodChange(long inCurPer, long inTarPer) {
   long tempVal;
-  int returnVal;
-  if(inTarPer < inCurPer) {
-    if(inCurPer <= systemTransition) {
-      tempVal = inCurPer - inTarPer;
-      returnVal = (int)(tempVal / systemShortInc);
+  long returnVal = inCurPer * systemPercent;
+  if(inCurPer > inTarPer) {
+    tempVal = inCurPer - inTarPer;
+    if(tempVal < returnVal) {
+      returnVal = -tempVal;
       return returnVal;
     }
     else {
-      if(inTarPer < systemTransition) {
-        tempVal = inCurPer - systemTransition;
-        returnVal = (int)(tempVal / systemLongInc);
-        tempVal = systemTransition - inTarPer;
-        returnVal += (int)(tempVal / systemShortInc);
-        return returnVal;
-      }
-      else {
-        tempVal = inCurPer - inTarPer;
-        returnVal = (int)(tempVal / systemLongInc);
-        return returnVal;
-      }
+      returnVal = -returnVal;
+      return returnVal;
     }
   }
   else if(inCurPer < inTarPer) {
-    if(inCurPer <= systemTransition) {
-      if(inTarPer <= systemTransition) {
-        tempVal = inTarPer - inCurPer;
-        returnVal = (int)(tempVal / systemShortInc);
-        return returnVal;
-      }
-      else {
-        tempVal = inTarPer - systemTransition;
-        returnVal = (int)(tempVal / systemLongInc);
-        tempVal = systemTransition - inCurPer;
-        returnVal += (int)(tempVal / systemShortInc);
-        return returnVal;
-      }
+    tempVal = inTarPer - inCurPer;
+    if(tempVal < returnVal) {
+      return tempVal;
     }
     else {
-      tempVal = inTarPer - inCurPer;
-      returnVal = (int)(tempVal / systemLongInc);
       return returnVal;
     }
   }
-  else
-    return 0;
+  else {
+    returnVal = 0;
+    return returnVal;
+  }
 }   //End findNumSteps function
-
-/*-----------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------*/
 //Initialize largeOrient instances
-/* UF/R: 10,11
- * DF/R: 8,9
- * RF/R: 6,7
- * LF/R: 4,5 */
-largeOrient upNdownS(10, 9, systemSP, 0, systemBuffer);
-largeOrient rightNleftS(6, 5, systemSP, 1, systemBuffer);
-largeOrient downNupS(8, 11, systemSP, 2, systemBuffer);
-largeOrient leftNrightS(4, 7, systemSP, 3, systemBuffer);
+/* UF/R: 34,35
+ * DF/R: 32,33
+ * RF/R: 25,26
+ * LF/R: 27,14 */
+largeOrient upNdownS(12, 33, systemSP, 0, systemBuffer);
+largeOrient rightNleftS(25, 14, systemSP, 1, systemBuffer);
+largeOrient downNupS(32, 13, systemSP, 2, systemBuffer);
+largeOrient leftNrightS(27, 26, systemSP, 3, systemBuffer);
+//End object initialization
 
-//State Variables
-volatile int stopStirring = 0;
-volatile int atSpeed = 0;
-volatile int currentSN = 0;
-volatile int smallMode = 0;
-//Time variables
-volatile unsigned long currentMillis = 0;
-volatile unsigned long previousMillis = 0;
-//Period variables
-volatile long currentPeriod = systemSP;
-volatile long currentTarget = systemTP;
-volatile long periodChange = systemLongInc;
-volatile int numSteps = 0;
-//End object and variable initialization
-
-/*-----------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------*/
 void stopInterrupt() {
   stopStirring = 1;
 }   //End stopInterrupt
 
-/*-----------------------------------------------------------------------------------------------------*/
-void setup() {
-  pinMode(0, OUTPUT);
-  pinMode(1, OUTPUT );
-  pinMode(2, INPUT);
-  pinMode(3, OUTPUT);
-  numSteps = findNumSteps(currentPeriod, currentTarget);
-  attachInterrupt(0, stopInterrupt, FALLING);
-}   //End setup
-
-/*-----------------------------------------------------------------------------------------------------*/
+/*------------------------------------------------------------------------------------*/
 void loop() {
   if(stopStirring == 0) {
     
@@ -176,35 +165,20 @@ void loop() {
         currentSN = 3;
       if(leftNrightS.stateUpdate(currentMillis, currentSN)==1)
         currentSN = 0;
-  
+/*
       //Speed change
-      if((numSteps > 0) &&
-      (currentPeriod != currentTarget) &&
+      if((currentPeriod != currentTarget) &&
       (currentMillis - previousMillis >= systemCheckTime) &&
       (currentSN == 0)) {
         previousMillis = currentMillis;
-        //Determine period change amount
-        if(currentPeriod > currentTarget) {
-          if(currentPeriod > systemTransition)
-            periodChange = -systemLongInc;
-          else
-            periodChange = -systemShortInc;
-        }
-        else if(currentPeriod < currentTarget) {
-          if(currentPeriod >= systemTransition)
-            periodChange = systemLongInc;
-          else
-            periodChange = systemShortInc;
-        }
-        else
-          periodChange = 0;
+        periodChange = findPeriodChange(currentPeriod, currentTarget);
         currentPeriod += periodChange;
         upNdownS.periodChange(currentPeriod);
         rightNleftS.periodChange(currentPeriod);
         downNupS.periodChange(currentPeriod);
         leftNrightS.periodChange(currentPeriod);
-        numSteps--;
       }   //End speed change if
+      */
   
       //Full speed pin
       if(currentPeriod == currentTarget)
@@ -227,32 +201,16 @@ void loop() {
       */
   
       //Speed change
-      if((numSteps > 0) &&
-      (currentPeriod != currentTarget) &&
+      if((currentPeriod != currentTarget) &&
       (currentMillis - previousMillis >= systemCheckTime) &&
       (currentSN == 0)) {
         previousMillis = currentMillis;
-        //Determine period change amount
-        if(currentPeriod > currentTarget) {
-          if(currentPeriod > systemTransition)
-            periodChange = -systemLongInc;
-          else
-            periodChange = -systemShortInc;
-        }
-        else if(currentPeriod < currentTarget) {
-          if(currentPeriod >= systemTransition)
-            periodChange = systemLongInc;
-          else
-            periodChange = systemShortInc;
-        }
-        else
-          periodChange = 0;
+        periodChange = findPeriodChange(currentPeriod, currentTarget);
         currentPeriod += periodChange;
         upNdownS.periodChange(currentPeriod);
         rightNleftS.periodChange(currentPeriod);
         downNupS.periodChange(currentPeriod);
         leftNrightS.periodChange(currentPeriod);
-        numSteps--;
       }   //End speed change if
   
       //Full speed pin

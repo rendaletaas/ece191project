@@ -194,18 +194,30 @@ void loop() {
       if(currentMillis - prevMlsState >= currentInt) {
         prevMlsState = currentMillis;
         switch(currentSN) {
-          case 0: l8N2S.stateUpdate(1);
-                  l4N6S.stateUpdate(0);
+          case 0: l4N6S.stateUpdate(0);
+                  l8N2S.stateUpdate(1);
                   currentSN = 1;  break;
-          case 1: l6N4S.stateUpdate(1);
-                  l8N2S.stateUpdate(0);
+          case 1: l7N3S.stateUpdate(0);
+                  l9N1S.stateUpdate(1);
                   currentSN = 2;  break;
-          case 2: l2N8S.stateUpdate(1);
-                  l6N4S.stateUpdate(0);
+          case 2: l8N2S.stateUpdate(0);
+                  l6N4S.stateUpdate(1);
                   currentSN = 3;  break;
-          case 3: l4N6S.stateUpdate(1);
-                  l2N8S.stateUpdate(0);
-                  currentSN = 0;  break;
+          case 3: l9N1S.stateUpdate(0);
+                  l3N7S.stateUpdate(1);
+                  currentSN = 4;  break;
+          case 4: l6N4S.stateUpdate(0);
+                  l2N8S.stateUpdate(1);
+                  currentSN = 5;  break;
+          case 5: l3N7S.stateUpdate(0);
+                  l1N9S.stateUpdate(1);
+                  currentSN = 6;  break;
+          case 6: l2N8S.stateUpdate(0);
+                  l4N6S.stateUpdate(1);
+                  currentSN = 7;  break;
+          case 7: l1N9S.stateUpdate(0);
+                  l7N3S.stateUpdate(1);
+                  currentSN = 8;  break;
           default:currentSN = 0;
         }   //End state switch
       }   //End state change if

@@ -39,10 +39,29 @@ const int n8 = 13, s8 = 12;
 const int n9 = 4, s9 = 0;
  
 /*------------------------------------------------------------------------------------*/
+//Display pins
+/*  a
+ * f b
+ *  g
+ * e c
+ *  d  */
+const int dispA = 0;
+const int dispB = 0;
+const int dispC = 0;
+const int dispD = 0;
+const int dispE = 0;
+const int dispF = 0;
+const int dispG = 0;
+const int dispOne = 0;
+const int dispZero = 0;
+
+/*------------------------------------------------------------------------------------*/
 //Function declarations
 long findPeriodChange(long inCurPer, long inTarPer);
 void stopInterrupt();
 int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff);
+void setDisplay(int inNum);
+int findRPM(long inNum);
 
 /*------------------------------------------------------------------------------------*/
 /* The large orient class is meant for stirring large beakers. It will turn on 2 coils,
@@ -192,6 +211,15 @@ void setup() {
 
   //LED setup
   //TO DO
+  
+  //Display setup
+  pinMode(dispA, OUTPUT);   pinMode(dispB, OUTPUT);
+  pinMode(dispC, OUTPUT);   pinMode(dispD, OUTPUT);
+  pinMode(dispE, OUTPUT);   pinMode(dispF, OUTPUT);
+  pinMode(dispG, OUTPUT);
+  pinMode(dispOne, OUTPUT);
+  pinMode(dispZero, OUTPUT);
+  setDisplay(findRPM(currentTar));
   
   //Button setup
   //TO DO
@@ -369,4 +397,78 @@ int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff) {
     return 1;
   else
     return 0;
-}   //End timeDifference
+}   //End timeDifference function
+
+/*------------------------------------------------------------------------------------*/
+/* The setDisplay function sets the number to be displayed. The number will always be
+ * a multiple of 100, for the display sets the tens and ones place to one. */
+void setDisplay(int inNum) {
+  int temp = (inNum - 1000) / 100;
+  digitalWrite(dispZero, HIGH);
+  if(inNum >= 1000)
+    digitalWrite(dispOne, HIGH);
+  else
+    digitalWrite(dispOne, LOW);
+    
+  switch(temp) {
+    case 2: case 3: case 5: case 6:
+    case 7: case 8: case 9: case 0:
+      digitalWrite(dispA, HIGH);  break;
+    default:  digitalWrite(dispA, LOW); break;
+  }   //End a switch
+  
+  switch(temp) {
+    case 1: case 2: case 3: case 4:
+    case 7: case 8: case 9: case 0:
+      digitalWrite(dispB, HIGH);  break;
+    default:  digitalWrite(dispB, LOW); break;
+  }   //End b switch
+  
+  switch(temp) {
+    case 1: case 3: case 4: case 5:
+    case 6: case 7: case 8: case 9:
+    case 0:
+      digitalWrite(dispC, HIGH);  break;
+    default:  digitalWrite(dispC, LOW); break;
+  }   //End c switch
+  
+  switch(temp) {
+    case 2: case 3: case 5: case 6:
+    case 8: case 0:
+      digitalWrite(dispD, HIGH);  break;
+    default:  digitalWrite(dispD, LOW); break;
+  }   //End d switch
+  
+  switch(temp) {
+    case 2: case 6: case 8: case 0:
+      digitalWrite(dispE, HIGH);  break;
+    default:  digitalWrite(dispE, LOW); break;
+  }   //End e switch
+  
+  switch(temp) {
+    case 4: case 5: case 6: case 8:
+    case 9: case 0:
+      digitalWrite(dispF, HIGH);  break;
+    default:  digitalWrite(dispF, LOW); break;
+  }   //End f switch
+  
+  switch(temp) {
+    case 2: case 3: case 4: case 5:
+    case 6: case 8: case 9:
+      digitalWrite(dispG, HIGH);  break;
+    default:  digitalWrite(dispG, LOW); break;
+  }   //End g switch
+}   //End setDisplay function
+
+/*------------------------------------------------------------------------------------*/
+/* The findRPM function takes in a period in us and returns the corresponding rpm. If
+ * the period is less than or equal to 30000, the rpm is 2000 or higher. Thus this
+ * function returns 1999, which is the largest number that can be on the display. */
+int findRPM(long inNum) {
+  int returnVal
+  if(inNum <= 30000)
+    returnVal = 1999;
+  else
+    returnVal = (int)((60*1000*1000)/inNum);
+  return returnVal;
+}   //End findRPM function

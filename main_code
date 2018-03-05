@@ -42,6 +42,7 @@ const int n9 = 4, s9 = 0;
 //Function declarations
 long findPeriodChange(long inCurPer, long inTarPer);
 void stopInterrupt();
+int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff);
 
 /*------------------------------------------------------------------------------------*/
 /* The large orient class is meant for stirring large beakers. It will turn on 2 coils,
@@ -228,7 +229,7 @@ void loop() {
     while((stopStirring == 0) && (smallMode == 0)) {
       //Stirring function
       currentTime = micros();
-      if(currentTime - prevTimeState >= currentInt) {
+      if(timeDifference(currentTime, prevTimeState, currentInt)) {
         prevTimeState = currentTime;
         switch(currentSN) {
           case 0:   l3n.stateUpdate(-2);
@@ -267,7 +268,7 @@ void loop() {
         }   //End state switch
       }   //End state change if
       //Speed change function
-      else if((currentTime - prevTimeCheck >= systemCheckTime) &&
+      else if((timeDifference(currentTime, prevTimeCheck, systemCheckTime)) &&
               (currentSN == 0)) {
         prevTimeCheck = currentTime;
         periodChange = findPeriodChange(currentPer, currentTar);
@@ -280,7 +281,7 @@ void loop() {
     while((stopStirring == 0) && (smallMode == 1)) {
       //Stirring function
       currentTime = micros();
-      if(currentTime - prevTimeState >= currentInt) {
+      if(timeDifference(currentTime, prevTimeState, currentInt)) {
         prevTimeState = currentTime;
         switch(currentSN) {
           case 0: s1379N5S.stateUpdate(1);
@@ -298,7 +299,7 @@ void loop() {
         }   //End state switch
       }   //End state change if
       //Speed change function
-      else if((currentTime - prevTimeCheck >= systemCheckTime) &&
+      else if((timeDifference(currentTime, prevTimeCheck, systemCheckTime)) &&
               (currentSN == 0)) {
         prevTimeCheck = currentTime;
         periodChange = findPeriodChange(currentPer, currentTar);
@@ -325,21 +326,17 @@ long findPeriodChange(long inCurPer, long inTarPer) {
     tempVal = inCurPer - inTarPer;
     if(tempVal < returnVal) {
       returnVal = -tempVal;
-      return returnVal;
-    }
+      return returnVal; }
     else {
       returnVal = -returnVal;
-      return returnVal;
-    }
+      return returnVal; }
   }
   else if(inCurPer < inTarPer) {
     tempVal = inTarPer - inCurPer;
     if(tempVal < returnVal) {
-      return tempVal;
-    }
+      return tempVal; }
     else {
-      return returnVal;
-    }
+      return returnVal; }
   }
   else {
     returnVal = 0;
@@ -354,3 +351,22 @@ long findPeriodChange(long inCurPer, long inTarPer) {
 void stopInterrupt() {
   stopStirring = 1;
 }   //End stopInterrupt function
+
+/*------------------------------------------------------------------------------------*/
+/* The timeDifference function is the check condition to see if the state is switching
+ * or if the device needs to increase in speed. The first condition in the if function
+ * is the main one: to see if difference from the last time checked and the current
+ * time is larger than a specific amount. The second condition is meant to handle when
+ * the micros() function resets to zero because the counting register reached the
+ * largest value posible (bit overflow). */
+int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff) {
+  if(
+  (inTime - inPrev >= inDiff) ||
+  ((inTime >= inDiff / 2) &&
+   (inPrev > 10000000) &&
+   (inTime < 10000000))
+  )
+    return 1;
+  else
+    return 0;
+}   //End timeDifference

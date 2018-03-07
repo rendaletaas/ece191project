@@ -72,7 +72,7 @@ class largeOrient {
   int coilPin1n;
   int coilPin1s;
   int coilPin2n;
-  int coilPin2s
+  int coilPin2s;
 
   public:
   largeOrient(int pin1, int pin2, int pin3, int pin4) {
@@ -312,17 +312,17 @@ void loop() {
       if(timeDifference(currentTime, prevTimeState, currentInt)) {
         prevTimeState = currentTime;
         switch(currentSN) {
-          case 0: s1379N5S.stateUpdate(1);
-                  s46N28S.stateUpdate(0);
+          case 0: s1379n5s.stateUpdate(1);
+                  s46n28s.stateUpdate(0);
                   currentSN = 1;  break;
-          case 1: s28N46S.stateUpdate(1);
-                  s1379N5S.stateUpdate(0);
+          case 1: s28n46s.stateUpdate(1);
+                  s1379n5s.stateUpdate(0);
                   currentSN = 2;  break;
-          case 2: s5N1379S.stateUpdate(1);
-                  s28N46S.stateUpdate(0);
+          case 2: s5n1379s.stateUpdate(1);
+                  s28n46s.stateUpdate(0);
                   currentSN = 3;  break;
-          case 3: s46N28S.stateUpdate(1);
-                  s5N1379S.stateUpdate(0);
+          case 3: s46n28s.stateUpdate(1);
+                  s5n1379s.stateUpdate(0);
                   currentSN = 0;  break;
         }   //End state switch
       }   //End state change if
@@ -465,7 +465,7 @@ void setDisplay(int inNum) {
  * the period is less than or equal to 30000, the rpm is 2000 or higher. Thus this
  * function returns 1999, which is the largest number that can be on the display. */
 int findRPM(long inNum) {
-  int returnVal
+  int returnVal;
   if(inNum <= 30000)
     returnVal = 1999;
   else

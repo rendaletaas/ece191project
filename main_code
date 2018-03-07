@@ -1,3 +1,6 @@
+#include <Wire.h>
+#include "Adafruit_MCP23017.h"
+
 //Testing variables
 const long testSta = 200;     //starting period in ms
 const long testTar = 40;      //target period in ms
@@ -196,6 +199,10 @@ smallOrient s28n46s(4, n2, n8, s4, s6, s5);
 smallOrient s5n1379s(5, s1, s3, s7, s9, n5);
 smallOrient s46n28s(4, n4, n6, s2, s8, n5);
 
+//Initialize slave instances
+Adafruit_MCP23017 mcp14;
+Adafruit_MCP23017 mcp58;
+
 /*------------------------------------------------------------------------------------*/
 /* In setup, we do the following tasks: set up the PWM channel, set the LED and button
  * pins, set up the interrupt, and initialize all
@@ -208,7 +215,19 @@ void setup() {
   ledcSetup(1, systemFreq, sysResolution);
   ledcAttachPin(22, 1);
   ledcWrite(1, systemHighDutyCycle);
-
+  
+  //Slave setup
+  mcp14.begin(0x20);
+  mcp14.begin(0x21);
+  int count = 0;
+  for(count < 8) {
+    mcp14.pinMode(count, OUTPUT);
+    mcp14.pullUp(count, HIGH);
+    mcp58.pinMode(count, OUTPUT);
+    mcp58.pullUp(count, HIGH);
+    count++;
+  }
+  
   //LED setup
   //TO DO
   

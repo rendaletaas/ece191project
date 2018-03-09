@@ -1,16 +1,41 @@
+//Testing variables
+const long testSta = 350;     //starting period in ms
+const long testTar = 40;      //target period in ms
+const float testPer = 0.009;   //percent change
+const float testChe = 1.3;       //check time in s
+const int testNum = 8;       //number of states
+const float testLDC = 0.65;    //percent LDC
+const float testHDC = 0.3;    //percent HDC
+
+/*------------------------------------------------------------------------------------*/
 //Initialize system variables
-const int systemFreq = 50000;         //Frequency of the PWM in Hz
+const int systemFreq = 50000;           //Frequency of the PWM in Hz
+const int sysResolution = 8;            //Number of bits for PWM channel
+const long systemLowDutyCycle           //Low duty cycle value, an integer between
+  = (long)((testLDC*256)-1);              //0 and 2^sysResolution
+const long systemHighDutyCycle          //High duty cycle value
+  = (long)((testHDC*256)-1);
+const float systemPercent = testPer;    //Percentage change in the period
+const long systemSP = testSta*1000;     //Default starting period in us
+const long systemTP = testTar*1000;     //Default target period in us
+const long systemCheckTime              //Default time between speed checks in us
+  = (long)(testChe*1000000);
+const int sysLarNumStates = testNum;    //Number of states for large stirring
+const int sysSmlNumStates = 4;          //Number of states for small stirring
+/*
+//Initialize system variables
+const int systemFreq = 1000;         //Frequency of the PWM in Hz
 const int sysResolution = 8;          //Number of bits for PWM channel
-const long systemLowDutyCycle = 140;  //Low duty cycle value, an integer between
+const long systemLowDutyCycle = 100;  //Low duty cycle value, an integer between
                                       //0 and 2^sysResolution
-const long systemHighDutyCycle = 200; //High duty cycle value
+const long systemHighDutyCycle = 150; //High duty cycle value
 const float systemPercent = 0.01;     //Percentage change in the period
-const long systemSP = 300;            //Default starting period in ms
-const long systemTP = 100;            //Default target period in ms
-const long systemCheckTime = 3000;    //Default time between speed checks in ms
+const long systemSP = 720000;            //Default starting period in ms
+const long systemTP = 40000;            //Default target period in ms
+const long systemCheckTime = 1500000;    //Default time between speed checks in ms
 const int sysLarNumStates = 8;        //Number of states for large stirring
 const int sysSmlNumStates = 4;        //Number of states for small stirring
-
+*/
 /*------------------------------------------------------------------------------------*/
 //Coil pin numbers
 /* 7 8 9
@@ -97,7 +122,7 @@ class smallOrient {
         digitalWrite(coilPin5, LOW);
     }
     else {
-      digitalWrite(coilPin1, HIGH;
+      digitalWrite(coilPin1, HIGH);
       digitalWrite(coilPin2, HIGH);
       digitalWrite(coilPin3, HIGH);
       digitalWrite(coilPin4, HIGH);
@@ -108,10 +133,47 @@ class smallOrient {
 };    //End smallOrient class
 
 /*------------------------------------------------------------------------------------*/
+//Initialize program variables and objects
+
+//State Variables
+volatile int stopStirring = 0;
+volatile int atSpeed = 0;
+volatile int currentSN = 0;
+volatile int smallMode = 0;
+
+//Time variables
+volatile unsigned long currentMillis = 0;
+volatile unsigned long prevMlsState = 0;
+volatile unsigned long prevMlsCheck = 0;
+
+//Period variables
+volatile long currentPer = systemSP;
+volatile long currentTar = systemTP;
+volatile long currentInt = currentPer / sysLarNumStates;
+volatile long periodChange = 0;
+
+/* Remember that largeOrient sets the pin mode, so they must be initialized first.
+ * All largeOrients must be initialized, even if they won't be used. */
+//Initialize largeOrient instances
+largeOrient l8N2S(n8, s2);
+largeOrient l9N1S(n9, s1);
+largeOrient l6N4S(n6, s4);
+largeOrient l3N7S(n3, s7);
+largeOrient l2N8S(n2, s8);
+largeOrient l1N9S(n1, s9);
+largeOrient l4N6S(n4, s6);
+largeOrient l7N3S(n7, s3);
+
+//Initialize smallOrient instances
+smallOrient s1379N5S(5, n1, n3, n7, n9, s5);
+smallOrient s28N46S(4, n2, n8, s4, s6, s5);
+smallOrient s5N1379S(5, s1, s3, s7, s9, n5);
+smallOrient s46N28S(4, n4, n6, s2, s8, n5);
+
+/*------------------------------------------------------------------------------------*/
 /* In setup, we do the following tasks: set up the PWM channel, set the LED and button
- * pins, initialize variables used by main, set up the interrupt, and initialize all
- * the objects. Remember that largeOrient sets the pin mode, so they must be
- * initialized first. */
+ * pins, set up the interrupt, and initialize all
+ * the objects.  */
 void setup() {
   //PWM setup
   ledcSetup(0, systemFreq, sysResolution);
@@ -127,41 +189,9 @@ void setup() {
   //Button setup
   //TO DO
   
-  //State Variables
-  volatile int stopStirring = 0;
-  volatile int atSpeed = 0;
-  volatile int currentSN = 0;
-  volatile int smallMode = 0;
-  
-  //Time variables
-  volatile unsigned long currentMillis = 0;
-  volatile unsigned long prevMlsState = 0;
-  volatile unsigned long prevMlsCheck = 0;
-  
-  //Period variables
-  volatile long currentPer = systemSP;
-  volatile long currentTar = systemTP;
-  volatile long currentInt = currentPer / sysLarNumStates;
-  volatile long periodChange = 0;
-  
   //Attatch interrupt (this must be after stopStirring is initialized)
   //TO DO
-  
-  //Initialize largeOrient instances
-  largeOrient l8N2S(n8, s2);
-  largeOrient l9N1S(n9, s1);
-  largeOrient l6N4S(n6, s4);
-  largeOrient l3N7S(n3, s7);
-  largeOrient l2N8S(n2, s8);
-  largeOrient l1N9S(n1, s9);
-  largeOrient l4N6S(n4, s6);
-  largeOrient l7N3S(n7, s3);
-  
-  //Initialize smallOrient instances
-  smallOrient s1379N5S(5, n1, n3, n7, n9, s5);
-  smallOrient s28N46S(4, n2, n8, s4, s6, s5);
-  smallOrient s5N1379S(5, s1, s3, s7, s9, n5);
-  smallOrient s46N28S(4, n4, n6, s2, s8, n5);
+
 }   //End setup
 
 /*====================================================================================*/
@@ -176,42 +206,43 @@ void loop() {
  * interrupt happens, stopStirring is set to 1, and the function exits the while. */
   if(stopStirring == 0) {
     //Reseting all variables
+    currentSN = 0;
     currentPer = systemSP;
     if(smallMode == 0)
-      currentInt = currentPer / systemLarNumStates;
+      currentInt = currentPer / sysLarNumStates;
     else
-      currentInt = currentPer / systemSmlNumStates;
+      currentInt = currentPer / sysSmlNumStates;
       
     //Large stirring
     while((stopStirring == 0) && (smallMode == 0)) {
       //Stirring function
-      currentMillis = millis();
+      currentMillis = micros();
       if(currentMillis - prevMlsState >= currentInt) {
         prevMlsState = currentMillis;
         switch(currentSN) {
-          case 0: l8N2S.stateUpdate(1);
-                  l7N3S.stateUpdate(0);
+          case 0: l7N3S.stateUpdate(0);
+                  l9N1S.stateUpdate(1);
                   currentSN = 1;  break;
-          case 1: l9N1S.stateUpdate(1);
-                  l8N2S.stateUpdate(0);
+          case 1: l8N2S.stateUpdate(0);
+                  l6N4S.stateUpdate(1);
                   currentSN = 2;  break;
-          case 2: l6N4S.stateUpdate(1);
-                  l9N1S.stateUpdate(0);
+          case 2: l9N1S.stateUpdate(0);
+                  l3N7S.stateUpdate(1);
                   currentSN = 3;  break;
-          case 3: l3N7S.stateUpdate(1);
-                  l6N4S.stateUpdate(0);
+          case 3: l6N4S.stateUpdate(0);
+                  l2N8S.stateUpdate(1);
                   currentSN = 4;  break;
-          case 4: l2N8S.stateUpdate(1);
-                  l3N7S.stateUpdate(0);
+          case 4: l3N7S.stateUpdate(0);
+                  l1N9S.stateUpdate(1);
                   currentSN = 5;  break;
-          case 5: l1N9S.stateUpdate(1);
-                  l2N8S.stateUpdate(0);
+          case 5: l2N8S.stateUpdate(0);
+                  l4N6S.stateUpdate(1);
                   currentSN = 6;  break;
-          case 6: l4N6S.stateUpdate(1);
-                  l1N9S.stateUpdate(0);
+          case 6: l1N9S.stateUpdate(0);
+                  l7N3S.stateUpdate(1);
                   currentSN = 7;  break;
-          case 7: l7N3S.stateUpdate(1);
-                  l4N6S.stateUpdate(0);
+          case 7: l4N6S.stateUpdate(0);
+                  l8N2S.stateUpdate(1);
                   currentSN = 0;  break;
           default:currentSN = 0;
         }   //End state switch
@@ -223,7 +254,7 @@ void loop() {
         prevMlsCheck = currentMillis;
         periodChange = findPeriodChange(currentPer, currentTar);
         currentPer += periodChange;
-        currentInt = currentPer / systemLarNumStates;        
+        currentInt = currentPer / sysLarNumStates;        
       }   //End speed change if
     }   //End large stirring while
     
@@ -234,7 +265,19 @@ void loop() {
       if(currentMillis - prevMlsState >= currentInt) {
         prevMlsState = currentMillis;
         switch(currentSN) {
-          //TO DO
+          case 0: s1379N5S.stateUpdate(1);
+                  s46N28S.stateUpdate(0);
+                  currentSN = 1;  break;
+          case 1: s28N46S.stateUpdate(1);
+                  s1379N5S.stateUpdate(0);
+                  currentSN = 2;  break;
+          case 2: s5N1379S.stateUpdate(1);
+                  s28N46S.stateUpdate(0);
+                  currentSN = 3;  break;
+          case 3: s46N28S.stateUpdate(1);
+                  s5N1379S.stateUpdate(0);
+                  currentSN = 0;  break;
+          default:currentSN = 0;
         }   //End state switch
       }   //End state change if
       
@@ -244,7 +287,7 @@ void loop() {
         prevMlsCheck = currentMillis;
         periodChange = findPeriodChange(currentPer, currentTar);
         currentPer += periodChange;
-        currentInt = currentPer / systemSmlNumStates;        
+        currentInt = currentPer / sysSmlNumStates;        
       }   //End speed change if
     }   //End small stirring while
     

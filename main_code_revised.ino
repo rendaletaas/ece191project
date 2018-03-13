@@ -1,0 +1,591 @@
+#include <Wire.h>
+#include "Adafruit_MCP23017.h"
+
+/*------------------------------------------------------------------------------------*/
+//Testing variables
+const long testSta = 200;     //starting period in ms
+const long testTar = 40;      //target period in ms
+const float testPer = 0.01;   //percent change
+const float testChe = 1;       //check time in s
+const int testNum = 16;       //number of states
+const float testLDC = 0.5;    //percent LDC
+const float testHDC = 0.5;    //percent HDC
+
+/*------------------------------------------------------------------------------------*/
+//Initialize system variables
+const int systemFreq = 50000;           //Frequency of the PWM in Hz
+const int sysResolution = 8;            //Number of bits for PWM channel
+const long systemLowDutyCycle           //Low duty cycle value, an integer between
+  = (long)((testLDC*256)-1);              //0 and 2^sysResolution
+const long systemHighDutyCycle          //High duty cycle value
+  = (long)((testHDC*256)-1);
+const float systemPercent = testPer;    //Percentage change in the period
+const long systemSP = testSta*1000;     //Default starting period in us
+const long systemTP = testTar*1000;     //Default target period in us
+const long systemCheckTime              //Default time between speed checks in us
+  = (long)(testChe*1000000);
+const int sysLarNumStates = testNum;    //Number of states for large stirring
+const int sysSmlNumStates = 4;          //Number of states for small stirring
+
+/*------------------------------------------------------------------------------------*/
+//Capacitive touch pads
+const int ctp1 = 34;
+const int ctp2 = 35;
+const int ctp3 = 32;
+const int ctp4 = 33;
+const int ctp5 = 25;
+
+//Coil control
+const int u1an = 8; const int u1as = 9;
+const int u1bn = 10; const int u1bs = 11;
+
+const int u2an = 12; const int u2as = 13;
+const int u2bn = 14; const int u2bs = 15;
+
+const int u3an = 0; const int u3as = 1;
+const int u3bn = 2; const int u3bs = 3;
+
+const int u4an = 4; const int u4as = 5;
+const int u4bn = 6; const int u4bs = 7;
+
+const int u5an = 8; const int u5as = 9;
+const int u5bn = 10; const int u5bs = 11;
+
+const int u6an = 12; const int u6as = 13;
+const int u6bn = 14; const int u6bs = 15;
+
+const int u7an = 0; const int u7as = 1;
+const int u7bn = 2; const int u7bs = 3;
+
+const int u8an = 4; const int u8as = 5;
+const int u8bn = 6; const int u8bs = 7;
+
+const int u9an = 2; const int u9as = 15;
+const int u9bn = 0; const int u9bs = 4;
+
+/*------------------------------------------------------------------------------------*/
+//Display pins
+/*  a
+ * f b
+ *  g
+ * e c
+ *  d  */
+const int dispA = 26;
+const int dispB = 27;
+const int dispC = 14;
+const int dispD = 12;
+const int dispE = 13;
+const int dispF = 23;
+const int dispG = 19;
+const int dispOne = 18;
+const int dispZero = 5;
+
+/*------------------------------------------------------------------------------------*/
+//Pin setup
+//Initialize slave instances
+Adafruit_MCP23017 mcp14, mcp58;
+
+//LED SETUP TO DO
+
+/*------------------------------------------------------------------------------------*/
+//Function declarations
+void largeUpdate(int inCoil, int inState);
+void smallUpdate(int inGrid, int inState);
+long findPeriodChange(long inCurPer, long inTarPer);
+void stopInterrupt();
+int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff);
+void setDisplay(int inNum);
+int findRPM(long inNum);
+
+/*------------------------------------------------------------------------------------*/
+//Initialize program variables and objects
+
+//State Variables
+volatile int stopStirring = 0;
+volatile int atSpeed = 0;
+volatile int currentSN = 1;
+volatile int smallMode = 0;
+
+//Time variables
+volatile unsigned long currentTime = 0;
+volatile unsigned long prevTimeState = 0;
+volatile unsigned long prevTimeCheck = 0;
+
+//Period variables
+volatile long currentPer = systemSP;
+volatile long currentTar = systemTP;
+volatile long currentInt = currentPer / sysLarNumStates;
+volatile long periodChange = 0;
+
+//Standard Counter
+int count = 0;
+
+
+/*------------------------------------------------------------------------------------*/
+/* In setup, we do the following tasks: set up the PWM channel, set the LED and button
+ * pins, set up the interrupt, and initialize all
+ * the objects.  */
+void setup() {
+
+  //Esp32 setup
+  pinMode(ctp1, INPUT);   //Touchpad setup
+  pinMode(ctp2, INPUT);
+  pinMode(ctp3, INPUT);
+  pinMode(ctp4, INPUT);
+  pinMode(ctp5, INPUT);
+  pinMode(dispA, OUTPUT);   
+  pinMode(dispB, OUTPUT);   //Display setup
+  pinMode(dispC, OUTPUT);   
+  pinMode(dispD, OUTPUT);
+  pinMode(dispE, OUTPUT);   
+  pinMode(dispF, OUTPUT);
+  pinMode(dispG, OUTPUT);
+  pinMode(dispOne, OUTPUT);
+  pinMode(dispZero, OUTPUT);
+  pinMode(u9bs, OUTPUT);   //Coil 9 setup
+  pinMode(u9bn, OUTPUT);
+  pinMode(u9an, OUTPUT);
+  pinMode(u9as, OUTPUT);
+  
+  //LED SETUP TO DO
+  //Slave setup
+  mcp14.begin(0);   //Default address
+  mcp58.begin(1);
+  for(count;count < 16;count++) {
+    mcp14.pinMode(count, OUTPUT);
+    mcp58.pinMode(count, OUTPUT);
+  }
+
+  //LED SETUP TO DO
+
+  //PWM setup
+  ledcSetup(0, systemFreq, sysResolution);
+  ledcAttachPin(23, 0);
+  ledcWrite(0, systemLowDutyCycle);
+  ledcSetup(1, systemFreq, sysResolution);
+  ledcAttachPin(22, 1);
+  ledcWrite(1, systemHighDutyCycle);
+  
+  //LED setup
+  //TO DO
+  
+  //Display setup
+  
+  setDisplay(findRPM(currentTar));
+  
+  //Button setup
+  //TO DO
+  
+  //Attatch interrupt (this must be after stopStirring is initialized)
+  //TO DO
+
+}   //End setup
+
+/*====================================================================================*/
+void loop() {
+/* When stopStirring is set to 0 by a button press, we entering the stirring function,
+ * found inside the following if function. It is separated by large and small stirring
+ * which have almost the same implementation. Every certain amount of time, set by
+ * currentInt, we change the state of the device by sending a stateUpdate to each
+ * object and incrementing to the next state. At a different interval, set by
+ * systemCheckTime, the speed of the device is changed. The speed will be changed every
+ * interval until the current period matches the target. When the stopStirring
+ * interrupt happens, stopStirring is set to 1, and the function exits the while. */
+/*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+  if(stopStirring == 0) {
+    //Reseting all variables
+    currentPer = systemSP;
+    currentSN = 0;
+    if(smallMode == 0) {
+      currentInt = currentPer / sysLarNumStates;
+      ledcWrite(1, systemHighDutyCycle);
+    }
+    else {
+      currentInt = currentPer / sysSmlNumStates;
+      ledcWrite(1, systemLowDutyCycle);
+    }
+
+    //Large stirring
+    while((stopStirring == 0) && (smallMode == 0)) {
+      //Stirring function
+      currentTime = micros();
+      if(timeDifference(currentTime, prevTimeState, currentInt)==1) {
+        prevTimeState = currentTime;
+        switch(currentSN) {
+          case 1: largeUpdate(4, 0);
+                  largeUpdate(6, 1); 
+                  currentSN = 2;  break;
+          case 2: largeUpdate(8, 0);
+                  largeUpdate(2, 1); 
+                  currentSN = 3;  break;
+          case 3: largeUpdate(6, 0);
+                  largeUpdate(4, 1); 
+                  currentSN = 4;  break;
+          case 4: largeUpdate(2, 0);
+                  largeUpdate(8, 1); 
+                  currentSN = 1;  break;
+          default:currentSN = 1;
+        }   //End currentSN switch
+      }   //End state change if
+      //Speed change function
+      else if((timeDifference(currentTime, prevTimeCheck, systemCheckTime)==1) &&
+              (currentSN == 0)) {
+        prevTimeCheck = currentTime;
+        periodChange = findPeriodChange(currentPer, currentTar);
+        currentPer += periodChange;
+        currentInt = currentPer / sysLarNumStates;        
+      }   //End speed change if
+    }   //End large stirring while
+    
+    //Small stirring
+    while((stopStirring == 0) && (smallMode == 1)) {
+      //Stirring function
+      currentTime = micros();
+      if(timeDifference(currentTime, prevTimeState, currentInt)==1) {
+        prevTimeState = currentTime;
+        switch(currentSN) {
+          case 1: smallUpdate(4, 0);
+                  smallUpdate(1, 1);
+                  currentSN = 2;  break;
+          case 2: smallUpdate(1, 0);
+                  smallUpdate(2, 1);
+                  currentSN = 3;  break;
+          case 3: smallUpdate(2, 0);
+                  smallUpdate(3, 1);
+                  currentSN = 4;  break;
+          case 4: smallUpdate(3, 0);
+                  smallUpdate(4, 1);
+                  currentSN = 1;  break;
+        }   //End state switch
+      }   //End state change if
+      //Speed change function
+      else if((timeDifference(currentTime, prevTimeCheck, systemCheckTime)==1) &&
+              (currentSN == 0)) {
+        prevTimeCheck = currentTime;
+        periodChange = findPeriodChange(currentPer, currentTar);
+        currentPer += periodChange;
+        currentInt = currentPer / sysSmlNumStates;        
+      }   //End speed change if
+    }   //End small stirring while
+    
+    //Stirring exit
+    count = 1;
+    for(count; count < 10; count++) {
+      largeUpdate(count, 0);
+      count++;
+    }   //End large turn off
+    count = 1;
+    for(count; count < 5; count++) {
+      smallUpdate(count, 0);
+    }   //End large turn off
+  }   //End stopStirring if
+/*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+}   //End loop
+
+/*====================================================================================*/
+/* The largeUpdate function is to control the pairs of coils for large stirring. Since
+ * any coil is paired up, whatever coil is turned north, the opposite coil is turned
+ * south. The A and B sets are controlled in parallel. inCoil is the coil which is
+ * turned north. inState: 1=on, 0=off. */
+void largeUpdate(int inCoil, int inState) {
+  switch(inCoil) {
+    case 1: switch(inState) {
+              case 1: mcp14.digitalWrite(u1an, HIGH);
+                      mcp14.digitalWrite(u1bn, HIGH);
+                            digitalWrite(u9as, HIGH);
+                            digitalWrite(u9bs, HIGH); break;
+              case 0: mcp14.digitalWrite(u1an, LOW);
+                      mcp14.digitalWrite(u1bn, LOW);
+                            digitalWrite(u9as, LOW);
+                            digitalWrite(u9bs, LOW);
+            } break;
+    case 2: switch(inState) {
+              case 1: mcp14.digitalWrite(u2an, HIGH);
+                      mcp14.digitalWrite(u2bn, HIGH);
+                      mcp58.digitalWrite(u8as, HIGH);
+                      mcp58.digitalWrite(u8bs, HIGH); break;
+              case 0: mcp14.digitalWrite(u2an, LOW);
+                      mcp14.digitalWrite(u2bn, LOW);
+                      mcp58.digitalWrite(u8as, LOW);
+                      mcp58.digitalWrite(u8bs, LOW);
+            } break;
+    case 3: switch(inState) {
+              case 1: mcp14.digitalWrite(u3an, HIGH);
+                      mcp14.digitalWrite(u3bn, HIGH);
+                      mcp58.digitalWrite(u7as, HIGH);
+                      mcp58.digitalWrite(u7bs, HIGH); break;
+              case 0: mcp14.digitalWrite(u3an, LOW);
+                      mcp14.digitalWrite(u3bn, LOW);
+                      mcp58.digitalWrite(u7as, LOW);
+                      mcp58.digitalWrite(u7bs, LOW);
+            } break;
+    case 4: switch(inState) {
+              case 1: mcp14.digitalWrite(u4an, HIGH);
+                      mcp14.digitalWrite(u4bn, HIGH);
+                      mcp58.digitalWrite(u6as, HIGH);
+                      mcp58.digitalWrite(u6bs, HIGH); break;
+              case 0: mcp14.digitalWrite(u4an, LOW);
+                      mcp14.digitalWrite(u4bn, LOW);
+                      mcp58.digitalWrite(u6as, LOW);
+                      mcp58.digitalWrite(u6bs, LOW);
+            } break;
+    case 5: break;
+    case 6: switch(inState) {
+              case 1: mcp58.digitalWrite(u6an, HIGH);
+                      mcp58.digitalWrite(u6bn, HIGH);
+                      mcp14.digitalWrite(u4as, HIGH);
+                      mcp14.digitalWrite(u4bs, HIGH); break;
+              case 0: mcp58.digitalWrite(u6an, LOW);
+                      mcp58.digitalWrite(u6bn, LOW);
+                      mcp14.digitalWrite(u4as, LOW);
+                      mcp14.digitalWrite(u4bs, LOW);
+            } break;
+    case 7: switch(inState) {
+              case 1: mcp58.digitalWrite(u7an, HIGH);
+                      mcp58.digitalWrite(u7bn, HIGH);
+                      mcp14.digitalWrite(u3as, HIGH);
+                      mcp14.digitalWrite(u3bs, HIGH); break;
+              case 0: mcp58.digitalWrite(u7an, LOW);
+                      mcp58.digitalWrite(u7bn, LOW);
+                      mcp14.digitalWrite(u3as, LOW);
+                      mcp14.digitalWrite(u3bs, LOW);
+            } break;
+    case 8: switch(inState) {
+              case 1: mcp58.digitalWrite(u8an, HIGH);
+                      mcp58.digitalWrite(u8bn, HIGH);
+                      mcp14.digitalWrite(u2as, HIGH);
+                      mcp14.digitalWrite(u2bs, HIGH); break;
+              case 0: mcp58.digitalWrite(u8an, LOW);
+                      mcp58.digitalWrite(u8bn, LOW);
+                      mcp14.digitalWrite(u2as, LOW);
+                      mcp14.digitalWrite(u2bs, LOW);
+            } break;
+    case 9: switch(inState) {
+              case 1:       digitalWrite(u9an, HIGH);
+                            digitalWrite(u9bn, HIGH);
+                      mcp14.digitalWrite(u1as, HIGH);
+                      mcp14.digitalWrite(u1bs, HIGH); break;
+              case 0:       digitalWrite(u9an, LOW);
+                            digitalWrite(u9bn, LOW);
+                      mcp14.digitalWrite(u1as, LOW);
+                      mcp14.digitalWrite(u1bs, LOW);
+            } break;
+  }   //End inCoil switch
+}   //End largeUpdate function
+
+/*------------------------------------------------------------------------------------*/
+/* The smallUpdate function is to control the coil grid for small stirring. Each grid
+ * half has its own input. inGrid is the grid configuration turned on. inState: 1=on,
+ * 0=off. */
+void smallUpdate(int inGrid, int inState) {
+  switch(inGrid) {
+    case 1: switch(inState) {
+              case 1: mcp58.digitalWrite(u7an, HIGH);   //Top row
+                            digitalWrite(u9an, HIGH);
+                      mcp58.digitalWrite(u8bn, HIGH);
+                      mcp58.digitalWrite(u5as, HIGH);   //Middle row
+                      mcp14.digitalWrite(u4bs, HIGH);
+                      mcp58.digitalWrite(u6bs, HIGH);
+                      mcp14.digitalWrite(u1an, HIGH);   //Bottom row
+                      mcp14.digitalWrite(u3an, HIGH);
+                      mcp14.digitalWrite(u2bn, HIGH); break;
+              case 0: mcp58.digitalWrite(u7an, LOW);   //Top row
+                            digitalWrite(u9an, LOW);
+                      mcp58.digitalWrite(u8bn, LOW);
+                      mcp58.digitalWrite(u5as, LOW);   //Middle row
+                      mcp14.digitalWrite(u4bs, LOW);
+                      mcp58.digitalWrite(u6bs, LOW);
+                      mcp14.digitalWrite(u1an, LOW);   //Bottom row
+                      mcp14.digitalWrite(u3an, LOW);
+                      mcp14.digitalWrite(u2bn, LOW);
+            } break;
+    case 2: switch(inState) {
+              case 1: mcp58.digitalWrite(u8an, HIGH);   //Top row
+                      mcp58.digitalWrite(u7bn, HIGH);
+                            digitalWrite(u9bn, HIGH);
+                      mcp14.digitalWrite(u4as, HIGH);   //Middle row
+                      mcp58.digitalWrite(u6as, HIGH);
+                      mcp58.digitalWrite(u5bs, HIGH);
+                      mcp14.digitalWrite(u2an, HIGH);   //Bottom row
+                      mcp14.digitalWrite(u1bn, HIGH);
+                      mcp14.digitalWrite(u3bn, HIGH); break;
+              case 0: mcp58.digitalWrite(u8an, LOW);   //Top row
+                      mcp58.digitalWrite(u7bn, LOW);
+                            digitalWrite(u9bn, LOW);
+                      mcp14.digitalWrite(u4as, LOW);   //Middle row
+                      mcp58.digitalWrite(u6as, LOW);
+                      mcp58.digitalWrite(u5bs, LOW);
+                      mcp14.digitalWrite(u2an, LOW);   //Bottom row
+                      mcp14.digitalWrite(u1bn, LOW);
+                      mcp14.digitalWrite(u3bn, LOW);
+            } break;
+    case 3: switch(inState) {
+              case 1: mcp58.digitalWrite(u7as, HIGH);   //Top row
+                            digitalWrite(u9as, HIGH);
+                      mcp58.digitalWrite(u8bs, HIGH);
+                      mcp58.digitalWrite(u5an, HIGH);   //Middle row
+                      mcp14.digitalWrite(u4bn, HIGH);
+                      mcp58.digitalWrite(u6bn, HIGH);
+                      mcp14.digitalWrite(u1as, HIGH);   //Bottom row
+                      mcp14.digitalWrite(u3as, HIGH);
+                      mcp14.digitalWrite(u2bs, HIGH); break;
+              case 0: mcp58.digitalWrite(u7as, LOW);   //Top row
+                            digitalWrite(u9as, LOW);
+                      mcp58.digitalWrite(u8bs, LOW);
+                      mcp58.digitalWrite(u5an, LOW);   //Middle row
+                      mcp14.digitalWrite(u4bn, LOW);
+                      mcp58.digitalWrite(u6bn, LOW);
+                      mcp14.digitalWrite(u1as, LOW);   //Bottom row
+                      mcp14.digitalWrite(u3as, LOW);
+                      mcp14.digitalWrite(u2bs, LOW);
+            } break;
+    case 4: switch(inState) {
+              case 1: mcp58.digitalWrite(u8as, HIGH);   //Top row
+                      mcp58.digitalWrite(u7bs, HIGH);
+                            digitalWrite(u9bs, HIGH);
+                      mcp14.digitalWrite(u4an, HIGH);   //Middle row
+                      mcp58.digitalWrite(u6an, HIGH);
+                      mcp58.digitalWrite(u5bn, HIGH);
+                      mcp14.digitalWrite(u2as, HIGH);   //Bottom row
+                      mcp14.digitalWrite(u1bs, HIGH);
+                      mcp14.digitalWrite(u3bs, HIGH); break;
+              case 0: mcp58.digitalWrite(u8as, LOW);   //Top row
+                      mcp58.digitalWrite(u7bs, LOW);
+                            digitalWrite(u9bs, LOW);
+                      mcp14.digitalWrite(u4an, LOW);   //Middle row
+                      mcp58.digitalWrite(u6an, LOW);
+                      mcp58.digitalWrite(u5bn, LOW);
+                      mcp14.digitalWrite(u2as, LOW);   //Bottom row
+                      mcp14.digitalWrite(u1bs, LOW);
+                      mcp14.digitalWrite(u3bs, LOW);
+            } break;
+  }   //End inGrid switch
+}   //End smallUpdate function
+
+/*------------------------------------------------------------------------------------*/
+/* The findPeriodChange function finds how much the period is supposed to change. This
+ * is meant to be a percentage change of the current period, set by systemPercent. If
+ * this change amount would be more than the difference the target period and the
+ * current period, the function will return that difference. */
+long findPeriodChange(long inCurPer, long inTarPer) {
+  long tempVal;
+  long returnVal = (long)((float)inCurPer * systemPercent);
+  if(inCurPer > inTarPer) {
+    tempVal = inCurPer - inTarPer;
+    if(tempVal < returnVal) {
+      returnVal = -tempVal;
+      return returnVal; }
+    else {
+      returnVal = -returnVal;
+      return returnVal; }
+  }
+  else if(inCurPer < inTarPer) {
+    tempVal = inTarPer - inCurPer;
+    if(tempVal < returnVal) {
+      return tempVal; }
+    else {
+      return returnVal; }
+  }
+  else {
+    returnVal = 0;
+    return returnVal;
+  }
+}   //End findNumSteps function
+
+/*------------------------------------------------------------------------------------*/
+/* The stopInterrupt function simply sets stopStirring to 1, to exit the stirring while
+ * loops. Compliant with the Arduino implementation of interrupts, this function must
+ * return void and take no parameters. */
+void stopInterrupt() {
+  stopStirring = 1;
+}   //End stopInterrupt function
+
+/*------------------------------------------------------------------------------------*/
+/* The timeDifference function is the check condition to see if the state is switching
+ * or if the device needs to increase in speed. The first condition in the if function
+ * is the main one: to see if difference from the last time checked and the current
+ * time is larger than a specific amount. The second condition is meant to handle when
+ * the micros() function resets to zero because the counting register reached the
+ * largest value posible (bit overflow). */
+int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff) {
+  if(inTime - inPrev >= inDiff)
+    return 1;
+  else if((inTime >= (inDiff / 2)) && (inPrev > 100000000) && (inTime < 10000000))
+    return 1;
+  else
+    return 0;
+}   //End timeDifference function
+
+/*------------------------------------------------------------------------------------*/
+/* The setDisplay function sets the number to be displayed. The number will always be
+ * a multiple of 100, for the display sets the tens and ones place to one. */
+void setDisplay(int inNum) {
+  int temp = (inNum - 1000) / 100;
+  digitalWrite(dispZero, HIGH);
+  if(inNum >= 1000)
+    digitalWrite(dispOne, HIGH);
+  else
+    digitalWrite(dispOne, LOW);
+    
+  switch(temp) {
+    case 2: case 3: case 5: case 6:
+    case 7: case 8: case 9: case 0:
+      digitalWrite(dispA, HIGH);  break;
+    default:  digitalWrite(dispA, LOW); break;
+  }   //End a switch
+  
+  switch(temp) {
+    case 1: case 2: case 3: case 4:
+    case 7: case 8: case 9: case 0:
+      digitalWrite(dispB, HIGH);  break;
+    default:  digitalWrite(dispB, LOW); break;
+  }   //End b switch
+  
+  switch(temp) {
+    case 1: case 3: case 4: case 5:
+    case 6: case 7: case 8: case 9:
+    case 0:
+      digitalWrite(dispC, HIGH);  break;
+    default:  digitalWrite(dispC, LOW); break;
+  }   //End c switch
+  
+  switch(temp) {
+    case 2: case 3: case 5: case 6:
+    case 8: case 0:
+      digitalWrite(dispD, HIGH);  break;
+    default:  digitalWrite(dispD, LOW); break;
+  }   //End d switch
+  
+  switch(temp) {
+    case 2: case 6: case 8: case 0:
+      digitalWrite(dispE, HIGH);  break;
+    default:  digitalWrite(dispE, LOW); break;
+  }   //End e switch
+  
+  switch(temp) {
+    case 4: case 5: case 6: case 8:
+    case 9: case 0:
+      digitalWrite(dispF, HIGH);  break;
+    default:  digitalWrite(dispF, LOW); break;
+  }   //End f switch
+  
+  switch(temp) {
+    case 2: case 3: case 4: case 5:
+    case 6: case 8: case 9:
+      digitalWrite(dispG, HIGH);  break;
+    default:  digitalWrite(dispG, LOW); break;
+  }   //End g switch
+}   //End setDisplay function
+
+/*------------------------------------------------------------------------------------*/
+/* The findRPM function takes in a period in us and returns the corresponding rpm. If
+ * the period is less than or equal to 30000, the rpm is 2000 or higher. Thus this
+ * function returns 1999, which is the largest number that can be on the display. */
+int findRPM(long inNum) {
+  int returnVal;
+  if(inNum <= 30000)
+    returnVal = 1999;
+  else
+    returnVal = (int)((60*1000*1000)/inNum);
+  return returnVal;
+}   //End findRPM function

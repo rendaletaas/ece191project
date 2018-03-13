@@ -1,6 +1,11 @@
 #include <Wire.h>
 #include "Adafruit_MCP23017.h"
 
+//Initialize slave instances
+Adafruit_MCP23017 mcp14;
+Adafruit_MCP23017 mcp58;
+
+/*------------------------------------------------------------------------------------*/
 //Testing variables
 const long testSta = 200;     //starting period in ms
 const long testTar = 40;      //target period in ms
@@ -27,6 +32,43 @@ const int sysLarNumStates = testNum;    //Number of states for large stirring
 const int sysSmlNumStates = 4;          //Number of states for small stirring
 
 /*------------------------------------------------------------------------------------*/
+//Capacitive touch pads
+const int ctp1 = 34;
+const int ctp2 = 35;
+const int ctp3 = 32;
+const int ctp4 = 33;
+const int ctp5 = 25;
+
+//Coil control
+const int u1an = 8; const int u1as = 9;
+const int u1bn = 10; const int u1bs = 11;
+
+const int u2an = 12; const int u2as = 13;
+const int u2bn = 14; const int u2bs = 15;
+
+const int u3an = 0; const int u3as = 1;
+const int u3bn = 2; const int u3bs = 3;
+
+const int u4an = 4; const int u4as = 5;
+const int u4bn = 6; const int u4bs = 7;
+
+const int u5an = 8; const int u5as = 9;
+const int u5bn = 10; const int u5bs = 11;
+
+const int u6an = 12; const int u6as = 13;
+const int u6bn = 14; const int u6bs = 15;
+
+const int u7an = 0; const int u7as = 1;
+const int u7bn = 2; const int u7bs = 3;
+
+const int u8an = 4; const int u8as = 5;
+const int u8bn = 6; const int u8bs = 7;
+
+const int u9an = 2; const int u9as = 15;
+const int u9bn = 0; const int u9bs = 4;
+
+/*------------------------------------------------------------------------------------*/
+/*
 //Coil pin numbers
 /* 7 8 9
  * 4 5 6
@@ -40,6 +82,7 @@ const int n6 = 25, s6 = 26;
 const int n7 = 16, s7 = 17;
 const int n8 = 13, s8 = 12;
 const int n9 = 4, s9 = 0;
+ */
  
 /*------------------------------------------------------------------------------------*/
 //Display pins
@@ -48,18 +91,50 @@ const int n9 = 4, s9 = 0;
  *  g
  * e c
  *  d  */
-const int dispA = 0;
-const int dispB = 0;
-const int dispC = 0;
-const int dispD = 0;
-const int dispE = 0;
-const int dispF = 0;
-const int dispG = 0;
-const int dispOne = 0;
-const int dispZero = 0;
+const int dispA = 26;
+const int dispB = 27;
+const int dispC = 14;
+const int dispD = 12;
+const int dispE = 13;
+const int dispF = 23;
+const int dispG = 19;
+const int dispOne = 18;
+const int dispZero = 5;
+
+/*------------------------------------------------------------------------------------*/
+//Pin setup
+//Slave setup
+mcp14.begin(0);   //Default address
+mcp14.begin(1);
+int count = 0;
+for(count < 16) {
+  mcp14.pinMode(count, OUTPUT);
+  mcp58.pinMode(count, OUTPUT);
+  count++;
+}
+
+//Esp32 setup
+pinMode(ctp1, INPUT);   //Touchpad setup
+pinMode(ctp2, INPUT);
+pinMode(ctp3, INPUT);
+pinMode(ctp4, INPUT);
+pinMode(ctp5, INPUT);
+pinMode(dispA, OUTPUT);   pinMode(dispB, OUTPUT);   //Display setup
+pinMode(dispC, OUTPUT);   pinMode(dispD, OUTPUT);
+pinMode(dispE, OUTPUT);   pinMode(dispF, OUTPUT);
+pinMode(dispG, OUTPUT);
+pinMode(dispOne, OUTPUT);
+pinMode(dispZero, OUTPUT);
+pinMode(u9bs, OUTPUT);   //Coil 9 setup
+pinMode(u9bn, OUTPUT);
+pinMode(u9an, OUTPUT);
+pinMode(u9as, OUTPUT);
+//LED SETUP TO DO
 
 /*------------------------------------------------------------------------------------*/
 //Function declarations
+void largeUpdate(int inCoil, int inState);
+void smallUpdate(int inCoils, int inState);
 long findPeriodChange(long inCurPer, long inTarPer);
 void stopInterrupt();
 int timeDifference(unsigned long inTime, unsigned long inPrev, long inDiff);
@@ -70,28 +145,102 @@ int findRPM(long inNum);
 /* The large orient class is meant for stirring large beakers. It will turn on 2 coils,
  * which should be different polarity. Since the pin mode function is in this class,
  * it must be initialized before the small orient class. The state update function
- * will either turn off or turn on the coils. */
-class largeOrient {
+ * will either turn off or turn on the coils. This orient is for coils 1 to 4.*/
+class largeOrient14 {
   int coilPin1n;
   int coilPin1s;
   int coilPin2n;
   int coilPin2s;
 
   public:
-  largeOrient(int pin1, int pin2, int pin3, int pin4) {
+  largeOrient14(int pin1, int pin2, int pin3, int pin4) {
     coilPin1n = pin1;
     coilPin1s = pin2;
     coilPin2n = pin3;
     coilPin2s = pin4;
-    pinMode(coilPin1n, OUTPUT);
-    pinMode(coilPin1s, OUTPUT);
-    pinMode(coilPin2n, OUTPUT);
-    pinMode(coilPin2s, OUTPUT);
-    digitalWrite(coilPin1n, LOW);
-    digitalWrite(coilPin1s, LOW);
-    digitalWrite(coilPin2n, LOW);
-    digitalWrite(coilPin2s, LOW);
-  }   //End largeOrient constructor 
+    mcp14.digitalWrite(coilPin1n, LOW);
+    mcp14.digitalWrite(coilPin1s, LOW);
+    mcp14.digitalWrite(coilPin2n, LOW);
+    mcp14.digitalWrite(coilPin2s, LOW);
+  }   //End largeOrient14 constructor 
+
+  //1 = coil 1 north, 2 = coil 1 off, -1 = coil 2 north, -2 = coil 2 off, 0 = both off
+  void stateUpdate(int inState) {
+    switch(inState) {
+      case 1:   mcp14.digitalWrite(coilPin1n, HIGH);
+                mcp14.digitalWrite(coilPin2s, HIGH);    break;
+      case 2:   mcp14.digitalWrite(coilPin1n, LOW);
+                mcp14.digitalWrite(coilPin2s, LOW);     break;
+      case -1:  mcp14.digitalWrite(coilPin2n, HIGH);
+                mcp14.digitalWrite(coilPin1s, HIGH);    break;
+      case -2:  mcp14.digitalWrite(coilPin2n, LOW);
+                mcp14.digitalWrite(coilPin1s, LOW);     break;
+      default:  mcp14.digitalWrite(coilPin1n, LOW);
+                mcp14.digitalWrite(coilPin1s, LOW);
+                mcp14.digitalWrite(coilPin2n, LOW);
+                mcp14.digitalWrite(coilPin2s, LOW);
+    }   //End switch
+  }   //End stateUpdate function
+};    //End largeOrient14 class
+
+/*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* This large orient is for coils 5 to 8.*/
+class largeOrient58 {
+  int coilPin1n;
+  int coilPin1s;
+  int coilPin2n;
+  int coilPin2s;
+
+  public:
+  largeOrient58(int pin1, int pin2, int pin3, int pin4) {
+    coilPin1n = pin1;
+    coilPin1s = pin2;
+    coilPin2n = pin3;
+    coilPin2s = pin4;
+    mcp58.digitalWrite(coilPin1n, LOW);
+    mcp58.digitalWrite(coilPin1s, LOW);
+    mcp58.digitalWrite(coilPin2n, LOW);
+    mcp58.digitalWrite(coilPin2s, LOW);
+  }   //End largeOrient58 constructor 
+
+  //1 = coil 1 north, 2 = coil 1 off, -1 = coil 2 north, -2 = coil 2 off, 0 = both off
+  void stateUpdate(int inState) {
+    switch(inState) {
+      case 1:   mcp58.digitalWrite(coilPin1n, HIGH);
+                mcp58.digitalWrite(coilPin2s, HIGH);    break;
+      case 2:   mcp58.digitalWrite(coilPin1n, LOW);
+                mcp58.digitalWrite(coilPin2s, LOW);     break;
+      case -1:  mcp58.digitalWrite(coilPin2n, HIGH);
+                mcp58.digitalWrite(coilPin1s, HIGH);    break;
+      case -2:  mcp58.digitalWrite(coilPin2n, LOW);
+                mcp58.digitalWrite(coilPin1s, LOW);     break;
+      default:  mcp58.digitalWrite(coilPin1n, LOW);
+                mcp58.digitalWrite(coilPin1s, LOW);
+                mcp58.digitalWrite(coilPin2n, LOW);
+                mcp58.digitalWrite(coilPin2s, LOW);
+    }   //End switch
+  }   //End stateUpdate function
+};    //End largeOrient58 class
+
+/*- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* This large orient is for coil 9.*/
+class largeOrient9 {
+  int coilPin1n;
+  int coilPin1s;
+  int coilPin2n;
+  int coilPin2s;
+
+  public:
+  largeOrient9(int pin1, int pin2, int pin3, int pin4) {
+    coilPin1n = pin1;
+    coilPin1s = pin2;
+    coilPin2n = pin3;
+    coilPin2s = pin4;
+    mcp14.digitalWrite(coilPin1n, LOW);
+    mcp14.digitalWrite(coilPin1s, LOW);
+    mcp14.digitalWrite(coilPin2n, LOW);
+    mcp14.digitalWrite(coilPin2s, LOW);
+  }   //End largeOrient9 constructor 
 
   //1 = coil 1 north, 2 = coil 1 off, -1 = coil 2 north, -2 = coil 2 off, 0 = both off
   void stateUpdate(int inState) {
@@ -110,7 +259,7 @@ class largeOrient {
                 digitalWrite(coilPin2s, LOW);
     }   //End switch
   }   //End stateUpdate function
-};    //End largeOrient class
+};    //End largeOrient9 class
 
 /*------------------------------------------------------------------------------------*/
 /* The small orient class is meant for stirring the small vials. It will turn on either
@@ -180,20 +329,16 @@ volatile long periodChange = 0;
 /* Remember that largeOrient sets the pin mode, so they must be initialized first.
  * All largeOrients must be initialized, even if they won't be used. */
 //Initialize largeOrient instances
-largeOrient l8n(n8, s8, n2, n2);
-largeOrient l9n(n9, s9, n1, s1);
-largeOrient l6n(n6, s6, n4, s4);
-largeOrient l3n(n3, s3, n7, s7);
+largeOrient14 la8n(n8, s8, n2, n2);
+largeOrient14 la9n(n9, s9, n1, s1);
+largeOrient la6n(n6, s6, n4, s4);
+largeOrient la3n(n3, s3, n7, s7);
 
 //Initialize smallOrient instances
 smallOrient s1379n5s(5, n1, n3, n7, n9, s5);
 smallOrient s28n46s(4, n2, n8, s4, s6, s5);
 smallOrient s5n1379s(5, s1, s3, s7, s9, n5);
 smallOrient s46n28s(4, n4, n6, s2, s8, n5);
-
-//Initialize slave instances
-Adafruit_MCP23017 mcp14;
-Adafruit_MCP23017 mcp58;
 
 /*------------------------------------------------------------------------------------*/
 /* In setup, we do the following tasks: set up the PWM channel, set the LED and button
@@ -208,28 +353,13 @@ void setup() {
   ledcAttachPin(22, 1);
   ledcWrite(1, systemHighDutyCycle);
   
-  //Slave setup
-  mcp14.begin(0x20);
-  mcp14.begin(0x21);
-  int count = 0;
-  for(count < 8) {
-    mcp14.pinMode(count, OUTPUT);
-    mcp14.pullUp(count, HIGH);
-    mcp58.pinMode(count, OUTPUT);
-    mcp58.pullUp(count, HIGH);
-    count++;
-  }
+  
   
   //LED setup
   //TO DO
   
   //Display setup
-  pinMode(dispA, OUTPUT);   pinMode(dispB, OUTPUT);
-  pinMode(dispC, OUTPUT);   pinMode(dispD, OUTPUT);
-  pinMode(dispE, OUTPUT);   pinMode(dispF, OUTPUT);
-  pinMode(dispG, OUTPUT);
-  pinMode(dispOne, OUTPUT);
-  pinMode(dispZero, OUTPUT);
+  
   setDisplay(findRPM(currentTar));
   
   //Button setup
@@ -354,6 +484,126 @@ void loop() {
 }   //End loop
 
 /*====================================================================================*/
+/* The largeUpdate function turns the specified coils on or off. The variable inCoil
+ * is the coilset which should turn on. For inState: 1=north, 2=south, 0=off */
+void coilUpdate(int inCoil, int inState) {
+  switch(inCoil) {
+    case 1: switch(inState) {
+              case 1: mcp14.digitalWrite(u1as, LOW);
+                      mcp14.digitalWrite(u1bs, LOW);
+                      mcp14.digitalWrite(u1an, HIGH);
+                      mcp14.digitalWrite(u1bn, HIGH);   break;
+              case 2: mcp14.digitalWrite(u1an, LOW);
+                      mcp14.digitalWrite(u1bn, LOW);
+                      mcp14.digitalWrite(u1as, HIGH);
+                      mcp14.digitalWrite(u1bs, HIGH);   break;
+              case 0: mcp14.digitalWrite(u1as, LOW);
+                      mcp14.digitalWrite(u1bs, LOW);
+                      mcp14.digitalWrite(u1an, LOW);
+                      mcp14.digitalWrite(u1bn, LOW);
+            } break;
+    case 2: switch(inState) {
+              case 1: mcp14.digitalWrite(u2as, LOW);
+                      mcp14.digitalWrite(u2bs, LOW);
+                      mcp14.digitalWrite(u2an, HIGH);
+                      mcp14.digitalWrite(u2bn, HIGH);   break;
+              case 2: mcp14.digitalWrite(u2an, LOW);
+                      mcp14.digitalWrite(u2bn, LOW);
+                      mcp14.digitalWrite(u2as, HIGH);
+                      mcp14.digitalWrite(u2bs, HIGH);   break;
+              case 0: mcp14.digitalWrite(u2as, LOW);
+                      mcp14.digitalWrite(u2bs, LOW);
+                      mcp14.digitalWrite(u2an, LOW);
+                      mcp14.digitalWrite(u2bn, LOW);
+            } break;
+    case 3: switch(inState) {
+              case 1: mcp14.digitalWrite(u3as, LOW);
+                      mcp14.digitalWrite(u3bs, LOW);
+                      mcp14.digitalWrite(u3an, HIGH);
+                      mcp14.digitalWrite(u3bn, HIGH);   break;
+              case 2: mcp14.digitalWrite(u3an, LOW);
+                      mcp14.digitalWrite(u3bn, LOW);
+                      mcp14.digitalWrite(u3as, HIGH);
+                      mcp14.digitalWrite(u3bs, HIGH);   break;
+              case 0: mcp14.digitalWrite(u3as, LOW);
+                      mcp14.digitalWrite(u3bs, LOW);
+                      mcp14.digitalWrite(u3an, LOW);
+                      mcp14.digitalWrite(u3bn, LOW);
+            } break;
+    case 4: switch(inState) {
+              case 1: mcp14.digitalWrite(u4as, LOW);
+                      mcp14.digitalWrite(u4bs, LOW);
+                      mcp14.digitalWrite(u4an, HIGH);
+                      mcp14.digitalWrite(u4bn, HIGH);   break;
+              case 2: mcp14.digitalWrite(u4an, LOW);
+                      mcp14.digitalWrite(u4bn, LOW);
+                      mcp14.digitalWrite(u4as, HIGH);
+                      mcp14.digitalWrite(u4bs, HIGH);   break;
+              case 0: mcp14.digitalWrite(u4as, LOW);
+                      mcp14.digitalWrite(u4bs, LOW);
+                      mcp14.digitalWrite(u4an, LOW);
+                      mcp14.digitalWrite(u4bn, LOW);
+            } break;
+    case 5: switch(inState) {
+              case 1: mcp58.digitalWrite(u5as, LOW);
+                      mcp58.digitalWrite(u5bs, LOW);
+                      mcp58.digitalWrite(u5an, HIGH);
+                      mcp58.digitalWrite(u5bn, HIGH);   break;
+              case 2: mcp58.digitalWrite(u5an, LOW);
+                      mcp58.digitalWrite(u5bn, LOW);
+                      mcp58.digitalWrite(u5as, HIGH);
+                      mcp58.digitalWrite(u5bs, HIGH);   break;
+              case 0: mcp58.digitalWrite(u5as, LOW);
+                      mcp58.digitalWrite(u5bs, LOW);
+                      mcp58.digitalWrite(u5an, LOW);
+                      mcp58.digitalWrite(u5bn, LOW);
+            } break;
+    case 6: switch(inState) {
+              case 1: mcp58.digitalWrite(u6as, LOW);
+                      mcp58.digitalWrite(u6bs, LOW);
+                      mcp58.digitalWrite(u6an, HIGH);
+                      mcp58.digitalWrite(u6bn, HIGH);   break;
+              case 2: mcp58.digitalWrite(u6an, LOW);
+                      mcp58.digitalWrite(u6bn, LOW);
+                      mcp58.digitalWrite(u6as, HIGH);
+                      mcp58.digitalWrite(u6bs, HIGH);   break;
+              case 0: mcp58.digitalWrite(u6as, LOW);
+                      mcp58.digitalWrite(u6bs, LOW);
+                      mcp58.digitalWrite(u6an, LOW);
+                      mcp58.digitalWrite(u6bn, LOW);
+            } break;
+    case 7: switch(inState) {
+              case 1: mcp58.digitalWrite(u7as, LOW);
+                      mcp58.digitalWrite(u7bs, LOW);
+                      mcp58.digitalWrite(u7an, HIGH);
+                      mcp58.digitalWrite(u7bn, HIGH);   break;
+              case 2: mcp58.digitalWrite(u7an, LOW);
+                      mcp58.digitalWrite(u7bn, LOW);
+                      mcp58.digitalWrite(u7as, HIGH);
+                      mcp58.digitalWrite(u7bs, HIGH);   break;
+              case 0: mcp58.digitalWrite(u7as, LOW);
+                      mcp58.digitalWrite(u7bs, LOW);
+                      mcp58.digitalWrite(u7an, LOW);
+                      mcp58.digitalWrite(u7bn, LOW);
+            } break;
+    case 8: switch(inState) {
+              case 1: mcp58.digitalWrite(u8as, LOW);
+                      mcp58.digitalWrite(u8bs, LOW);
+                      mcp58.digitalWrite(u8an, HIGH);
+                      mcp58.digitalWrite(u8bn, HIGH);   break;
+              case 2: mcp58.digitalWrite(u8an, LOW);
+                      mcp58.digitalWrite(u8bn, LOW);
+                      mcp58.digitalWrite(u8as, HIGH);
+                      mcp58.digitalWrite(u8bs, HIGH);   break;
+              case 0: mcp58.digitalWrite(u8as, LOW);
+                      mcp58.digitalWrite(u8bs, LOW);
+                      mcp58.digitalWrite(u8an, LOW);
+                      mcp58.digitalWrite(u8bn, LOW);
+            } break;
+  }   //End switch
+}   //End largeUpdate function
+
+/*------------------------------------------------------------------------------------*/
 /* The findPeriodChange function finds how much the period is supposed to change. This
  * is meant to be a percentage change of the current period, set by systemPercent. If
  * this change amount would be more than the difference the target period and the
